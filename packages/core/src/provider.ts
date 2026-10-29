@@ -2,7 +2,7 @@ import type { z } from 'zod'
 import type { Credentials } from './connections'
 import type { Envelope } from './envelope'
 
-export type ProviderId = 'slack' | 'webhook'
+export type ProviderId = 'slack' | 'webhook' | 'sms'
 export type ConnectionStatus = 'active' | 'revoked'
 
 export interface Connection {
@@ -51,6 +51,10 @@ export interface OAuthConfig {
 export interface ProviderAdapter {
   id: ProviderId
   oauth?: OAuthConfig
+  /** How the request body is parsed into `payload`. Default 'json'. 'form' yields a string record. */
+  bodyFormat?: 'json' | 'form'
+  /** Response for an accepted or duplicate event. Default: empty 200. */
+  ack?(): Response
   /** Throws SignatureError (401) or UnknownConnectionError (200, not stored). */
   verify(req: Request, rawBody: string): Promise<void>
   /** Runs after verify. A non-null Response is returned to the caller as-is. */

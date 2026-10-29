@@ -50,6 +50,13 @@
       "when": 1792978024690,
       "tag": "0006_tenancy_not_null",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792981048588,
+      "tag": "0007_high_makkari",
+      "breakpoints": true
     }
   ]
 }

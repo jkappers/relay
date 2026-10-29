@@ -1,0 +1,1 @@
+ALTER TYPE "public"."credential_kind" ADD VALUE 'sms_auth_token';

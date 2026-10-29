@@ -76,7 +76,7 @@ export const connectionMembers = pgTable(
   (t) => [primaryKey({ columns: [t.connectionId, t.userId] }), index('connection_members_user_idx').on(t.userId)],
 )
 
-export const credentialKind = pgEnum('credential_kind', ['slack_user_token', 'webhook_secret'])
+export const credentialKind = pgEnum('credential_kind', ['slack_user_token', 'webhook_secret', 'sms_auth_token'])
 
 export const credentials = pgTable(
   'credentials',

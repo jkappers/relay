@@ -32,6 +32,8 @@ export interface ConnectionStore {
   upsertSlack(input: { teamId: string; userId: string; accessToken: string; ownerUserId: string | null }): Promise<Connection>
   revokeSlack(teamId: string, userIds: readonly string[]): Promise<number>
   createWebhook(input: { name?: string; ownerUserId: string | null }): Promise<{ connection: Connection; secret: string }>
+  /** `number` is E.164. Throws ConnectionOwnedError if that account/number pair already exists. */
+  createSms(input: { name?: string; accountSid: string; number: string; authToken: string; ownerUserId: string | null }): Promise<Connection>
   listForUser(userId: string): Promise<ConnectionSummary[]>
   getCredentials(connectionId: string): Promise<Credentials>
   getWebhookSecret(connectionId: string): Promise<string | null>
@@ -123,6 +125,20 @@ export function createConnectionStore(db: Db, cipher: Cipher): ConnectionStore {
         if (ownerUserId !== null) await tx.insert(connectionMembers).values({ connectionId: row.id, userId: ownerUserId, role: 'owner' })
         await putCredential(tx, row.id, 'webhook_secret', secret)
         return { connection: toConnection(row), secret }
+      })
+    },
+
+    async createSms({ name, accountSid, number, authToken, ownerUserId }) {
+      return db.transaction(async (tx) => {
+        const [row] = await tx
+          .insert(connections)
+          .values({ provider: 'sms', teamId: accountSid, userId: number, name: name ?? `SMS ${number}` })
+          .onConflictDoNothing({ target: [connections.provider, connections.teamId, connections.userId] })
+          .returning()
+        if (!row) throw new ConnectionOwnedError('this Twilio number is already connected')
+        if (ownerUserId !== null) await tx.insert(connectionMembers).values({ connectionId: row.id, userId: ownerUserId, role: 'owner' })
+        await putCredential(tx, row.id, 'sms_auth_token', authToken)
+        return toConnection(row)
       })
     },
 
