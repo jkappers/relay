@@ -6,7 +6,7 @@ export const workerEnvSchema = coreEnvSchema
     PUBLIC_URL: z.url().transform((u) => u.replace(/\/+$/, '')),
     SLACK_API_BASE_URL: z.url().default('https://slack.com/api'),
     SMS_API_BASE_URL: z.url().default('https://api.twilio.com'),
-    // Discord actions need the app's bot token. Without it they fail with no_credentials.
+    // Fallback bot token when no Discord app is saved in Relay. Without any token Discord actions fail with no_credentials.
     DISCORD_BOT_TOKEN: z
       .string()
       .optional()

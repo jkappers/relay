@@ -6,10 +6,13 @@ import {
   createCipher,
   createConnectionStore,
   createDb,
+  createProviderAppStore,
   deriveReplyTokenKey,
+  discordBotTokenReader,
   loadConfig,
   log,
   PgBossQueue,
+  providerAppEnv,
   QUEUES,
   schema,
   type ActionsJob,
@@ -43,11 +46,18 @@ async function main() {
   await queue.ensureQueue(QUEUES.agent)
 
   const metrics = createWorkerMetrics()
+  const providerApps = createProviderAppStore({
+    db,
+    masterKey: config.RELAY_MASTER_KEY,
+    env: providerAppEnv(config),
+    ttlMs: 30_000,
+    counters: { configErrors: metrics.providerAppConfigErrors },
+  })
   const runtimes = {
     slack: createSlackRuntime({ db, apiBase: config.SLACK_API_BASE_URL }),
     webhook: createWebhookRuntime(),
     sms: createSmsRuntime({ db, apiBase: config.SMS_API_BASE_URL }),
-    discord: createDiscordRuntime({ db, botToken: config.DISCORD_BOT_TOKEN, apiBase: config.DISCORD_API_BASE_URL }),
+    discord: createDiscordRuntime({ db, botToken: discordBotTokenReader(providerApps), apiBase: config.DISCORD_API_BASE_URL }),
   }
   const classifier = config.RELAY_CLASSIFIER === 'fake' ? createDemoClassifier() : createAnthropicClassifier()
   const route = createRouter({ db, queue, metrics, runtimes, classifier })

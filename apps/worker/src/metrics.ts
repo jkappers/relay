@@ -64,6 +64,11 @@ export function createWorkerMetrics(registry = new MetricsRegistry()) {
       'Delivery attempts by outcome.',
       ['outcome'] as const,
     ),
+    providerAppConfigErrors: registry.counter(
+      'relay_provider_app_config_errors_total',
+      'Provider app settings that could not be used, by reason.',
+      ['provider', 'reason'] as const,
+    ),
   }
 }
 
