@@ -101,3 +101,26 @@ Worker metrics:
 ## `relay_agent_tokens_total` kinds
 
 `input`, `output`, `cache_read`, `cache_creation`. Summed over every model the SDK reports for the run.
+
+## `relay_console_logins_total`
+
+Console login attempts. Label `outcome`:
+
+| Outcome | Meaning |
+|---|---|
+| `success` | Right password. A session cookie was set. |
+| `bad_password` | Wrong password. Counts toward the throttle. |
+| `throttled` | 5 failures from one IP in 15 minutes. Rejected with 429 before the password is checked. |
+
+## `relay_console_mutations_total`
+
+Changes made through the console API that succeeded. Labels `resource` and `action`.
+
+| Resource | Actions |
+|---|---|
+| `connection` | `create`, `revoke` |
+| `destination` | `create`, `update`, `delete`, `rotate_secret` |
+| `route` | `create`, `update`, `delete`, `enable`, `disable` |
+| `event` | `replay` |
+| `delivery` | `replay` |
+| `token` | `revoke` |

@@ -13,6 +13,9 @@
     "db:generate": "pnpm --filter @relay/core db:generate",
     "db:check": "pnpm --filter @relay/core db:check",
     "dev:server": "pnpm --filter @relay/server start",
+    "dev:console": "pnpm --filter @relay/console dev",
+    "build:console": "pnpm --filter @relay/console build",
+    "typecheck:console": "pnpm --filter @relay/console typecheck",
     "dev:worker": "pnpm --filter @relay/worker start",
     "check": "bash scripts/check.sh"
   },

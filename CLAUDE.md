@@ -10,6 +10,8 @@ scripts/check.sh
 
 It starts the compose Postgres if needed, then runs `pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm db:check` (migrations match the schema), and `pnpm test`. It must pass before any hand-back.
 
+UI changes also need a browser check. The Playwright MCP browser runs in Docker, so open the local server at `http://host.docker.internal:<port>`, not `localhost`.
+
 ## Who does what
 
 - The lead engineer plans each milestone and hands it to a subagent with a full brief.

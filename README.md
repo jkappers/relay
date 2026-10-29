@@ -2,7 +2,7 @@
 
 Relay is a personal event-ingest service. Providers like Slack send it events. Relay checks each event's signature, saves it, and puts it on a queue. A worker picks it up from there.
 
-Milestones 1 to 4 are done: ingest, routing, signed HTTP delivery with retries, actions (reply, react, and more) with a loop guard, and agent destinations that run Claude on an event.
+Milestones 1 to 5 are done: ingest, routing, signed HTTP delivery with retries, actions (reply, react, and more) with a loop guard, agent destinations that run Claude on an event, and a web console.
 
 ## How an event flows
 
@@ -29,7 +29,8 @@ Events with no text never match a text filter.
 
 | Path | What it is |
 |---|---|
-| `apps/server` | Hono HTTP server: ingress, Slack OAuth, `POST /actions`, `/metrics`, `/healthz` |
+| `apps/server` | Hono HTTP server: ingress, Slack OAuth, `POST /actions`, `/metrics`, `/healthz`, the console API (`/api`), and the built console |
+| `apps/console` | The web console: Vite + React. Built files go to `apps/console/dist` |
 | `apps/worker` | pg-boss consumers: router, dispatcher, actions, and agent runs, plus `/metrics` and `/healthz` |
 | `packages/core` | Config, crypto, DB schema and migrations, queue, envelope, provider interface, metrics |
 | `packages/providers/slack` | Slack adapter: signature check, normalize, OAuth |
@@ -63,6 +64,7 @@ Tests use the `relay_test` database. Compose creates it on first start, so tests
 |---|---|---|
 | `DATABASE_URL` | server, worker, CLI | Postgres URL |
 | `RELAY_MASTER_KEY` | server, worker, CLI | 32 random bytes, base64. Encrypts stored tokens and secrets. Startup fails if it's missing or the wrong size. |
+| `CONSOLE_PASSWORD` | server | Console login password. At least 16 characters. Required. |
 | `PORT` | server | Default 3000 |
 | `PUBLIC_URL` | server, worker | Public HTTPS base URL. The OAuth `redirect_uri` is `$PUBLIC_URL/oauth/slack/callback`. The worker sends `$PUBLIC_URL/actions` to destinations. |
 | `SLACK_API_BASE_URL` | server, worker | Slack Web API base. Default `https://slack.com/api`. Change only to stub Slack in tests. |
@@ -95,6 +97,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 | `POST /actions` | Async actions, with a reply token. See Actions. |
 | `GET /oauth/slack/start` | Starts Slack OAuth (user scopes only) |
 | `GET /oauth/slack/callback` | Slack OAuth redirect target |
+| `GET /` | The web console (static files, with fallback to `index.html`) |
+| `/api/*` | Console API. Needs a console session. |
 | `GET /metrics` | Prometheus text. See `docs/metrics.md`. |
 | `GET /healthz` | 200 when the DB answers |
 
@@ -102,7 +106,7 @@ The worker serves `GET /metrics` and `GET /healthz` on `WORKER_METRICS_PORT`.
 
 ## Admin CLIs
 
-Temporary until the console. Run from the repo root with `pnpm --filter @relay/server <script>`. 
+The console does everything these do. They still work. Run from the repo root with `pnpm --filter @relay/server <script>`. 
 | Script | Does |
 |---|---|
 | `destinations:create --name N --url U [--max-attempts 8] [--timeout-ms 10000] [--allowed-actions reply,react]` | Creates an HTTP destination. Prints its id and signing secret once. |
@@ -114,6 +118,39 @@ Temporary until the console. Run from the repo root with `pnpm --filter @relay/s
 | `deliveries:list [--status failed]` | Lists the 100 newest deliveries. |
 | `deliveries:replay <deliveryId>` | Resets a `failed` delivery to `pending` with 0 attempts and queues it. |
 | `events:replay <eventId>` | Queues the event for routing again. Existing deliveries are kept. Only new matches (a new route, a new destination) create deliveries. |
+
+## Console
+
+A small web UI for the one owner. It does what the CLIs do, and it shows the event log.
+
+Open it:
+
+```sh
+pnpm build:console   # writes apps/console/dist
+pnpm dev:server      # then open http://localhost:$PORT
+```
+
+Sign in with `CONSOLE_PASSWORD`. Pages: Overview, Connections, Destinations, Routes (with a live match preview), Events (with raw and normalized JSON, deliveries, and replay), and Deliveries (with a failed filter and replay).
+
+Secrets (a new webhook secret, a new destination secret, a rotated secret) show once in a copy box. Relay keeps only an encrypted copy.
+
+Work on the UI with hot reload. Run the server, then:
+
+```sh
+pnpm dev:console     # http://localhost:5173, proxies /api and /oauth to the server
+```
+
+If the server is not on port 3000, set `RELAY_SERVER_URL`.
+
+Security notes:
+
+- One user, one password. There are no accounts. Pick a long password and serve the console over HTTPS.
+- The session is a signed cookie: `HttpOnly`, `SameSite=Strict`, `Secure` when `PUBLIC_URL` is https. It lasts 12 hours. Signing out clears it in your browser. Changing `RELAY_MASTER_KEY` ends every session.
+- After 5 wrong passwords from one address in 15 minutes, login returns 429. The counter is in memory and resets on restart.
+- Every change needs the `X-Relay-Console: 1` header. The cookie's `SameSite=Strict` is a second guard against CSRF.
+- `/oauth/slack/start` needs a console session. Before, anyone could start it. The callback still checks its state and `SLACK_ALLOWED_USER_IDS`.
+- Event text comes from other people. The UI only shows it as plain text, and the page runs under a strict Content-Security-Policy.
+- Details are in `docs/adr/0005-console.md`.
 
 ## Agents
 
