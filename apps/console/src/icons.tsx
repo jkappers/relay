@@ -87,6 +87,14 @@ const paths = {
   ),
   back: <path d="M15 5l-7 7 7 7" />,
   plus: <path d="M12 5v14M5 12h14" />,
+  edit: <path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" />,
+  power: (
+    <>
+      <path d="M12 3v8" />
+      <path d="M6.3 6.3a8 8 0 1 0 11.4 0" />
+    </>
+  ),
+  trash: <path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13" />,
   external: (
     <>
       <path d="M14 4h6v6M20 4l-9 9" />

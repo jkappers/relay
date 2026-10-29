@@ -66,3 +66,50 @@ export function useDebounced<T>(value: T, ms: number): T {
 }
 
 export const errorText = (e: unknown) => (e instanceof ApiError ? e.describe() : e instanceof Error ? e.message : String(e))
+
+export function parseRoute(path: string): { base: string; event: string | null } {
+  const [base = '/', qs = ''] = path.split('?')
+  const m = /^\/events\/([0-9a-f-]{36})$/.exec(base)
+  if (m) return { base: '/events', event: m[1]! }
+  return { base, event: /(?:^|&)event=([0-9a-f-]{36})(?:&|$)/.exec(qs)?.[1] ?? null }
+}
+
+export const eventHref = (base: string, id: string) => (base === '/events' ? `#/events/${id}` : `#${base}?event=${id}`)
+
+export const focusRow = (id: string) => document.querySelector<HTMLElement>(`[data-ev="${id}"]`)?.focus()
+
+export function useListNav(ids: string[], base: string, open: string | null) {
+  const [sel, setSel] = useState(-1)
+  const ref = useRef({ ids, open, sel })
+  ref.current = { ids, open, sel }
+  const openIdx = open ? ids.indexOf(open) : -1
+  useEffect(() => {
+    if (openIdx >= 0) setSel(openIdx)
+  }, [openIdx])
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement
+      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented || t.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (e.key === '/') {
+        const f = document.getElementById('filter')
+        if (!f) return
+        e.preventDefault()
+        f.focus()
+        return
+      }
+      const inList = t.closest('[data-list]') !== null
+      const d = e.key === 'j' || (inList && e.key === 'ArrowDown') ? 1 : e.key === 'k' || (inList && e.key === 'ArrowUp') ? -1 : 0
+      const { ids, open, sel } = ref.current
+      if (!d || ids.length === 0) return
+      e.preventDefault()
+      const n = Math.max(0, Math.min(ids.length - 1, sel + d))
+      const id = ids[n]!
+      setSel(n)
+      if (open) window.location.replace(eventHref(base, id))
+      else focusRow(id)
+    }
+    window.addEventListener('keydown', on)
+    return () => window.removeEventListener('keydown', on)
+  }, [base])
+  return [sel, setSel] as const
+}

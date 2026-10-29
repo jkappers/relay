@@ -32,21 +32,23 @@ export function Login({ onLogin }: { onLogin: () => void }) {
 
   return (
     <div className="grid min-h-dvh grid-rows-[auto_1fr] bg-ground">
-      <header className="flex h-14 items-center gap-2 border-b border-edge bg-rail px-4">
-        <RelayMark />
-        <span className="font-bold tracking-tight">Relay</span>
+      <header className="flex h-12 items-center gap-2 border-b border-rule bg-rail px-4">
+        <RelayMark className="size-5" />
+        <span className="font-semibold tracking-tight">Relay</span>
       </header>
-      <main className="flex items-start justify-center px-4 pt-[12vh] pb-10">
-        <form onSubmit={submit} className="w-full max-w-sm">
-          <h1 className="text-lg font-bold tracking-tight">Sign in to the console</h1>
-          <p className="mt-1 text-sm text-ink-2">Use the console password set in CONSOLE_PASSWORD on the server.</p>
-          <div className="mt-6 flex flex-col gap-4 border-t border-rule pt-5">
+      <main className="flex items-start justify-center px-4 pt-[14vh] pb-10">
+        <form onSubmit={submit} className="w-full max-w-xs rounded-ctl border border-rule bg-raised p-5 shadow-panel">
+          <h1 className="text-lg font-semibold tracking-tight">Sign in to the console</h1>
+          <p className="mt-1 text-xs text-ink-3">
+            Use the password set in <code>CONSOLE_PASSWORD</code> on the server.
+          </p>
+          <div className="mt-4 flex flex-col gap-3">
             <Field label="Password">
               {(p) => (
                 <input
                   {...p}
                   type="password"
-                  className="input h-10"
+                  className="input h-8"
                   autoComplete="current-password"
                   autoFocus
                   value={password}
@@ -55,7 +57,7 @@ export function Login({ onLogin }: { onLogin: () => void }) {
               )}
             </Field>
             <FormError error={error} />
-            <button className="btn btn-primary h-10" disabled={busy || password === ''}>
+            <button className="btn btn-primary h-8" disabled={busy || password === ''}>
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </div>

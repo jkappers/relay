@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import { del, get, patch, post, type Destination } from '../api'
-import { Async, Check, ConfirmButton, CopyId, Empty, Field, FormError, Page, SecretBox, SkeletonRows, splitList } from '../components'
+import { Async, Check, ConfirmButton, CopyButton, cx, Empty, Field, FormError, Page, SecretBox, SkeletonRows, splitList } from '../components'
 import { Icon } from '../icons'
 import { jackCode } from '../patch'
-import { StatusMark } from '../trace'
+import { plural, StatusMark } from '../trace'
 import { errorText, useLoad } from '../hooks'
 
 interface FormState {
@@ -27,7 +27,7 @@ const blank: FormState = {
   enabled: true,
   url: '',
   maxAttempts: '8',
-  timeoutMs: '10000',
+  timeoutMs: '10',
   allowedActions: '',
   systemPrompt: '',
   model: 'claude-sonnet-5-5',
@@ -43,7 +43,7 @@ const fromDestination = (d: Destination): FormState => ({
   enabled: d.enabled,
   url: d.url ?? '',
   maxAttempts: String(d.maxAttempts),
-  timeoutMs: String(d.timeoutMs),
+  timeoutMs: String(d.timeoutMs / 1000),
   allowedActions: d.allowedActions?.join(', ') ?? '',
   ...(d.config
     ? {
@@ -88,7 +88,7 @@ function DestinationForm({
         await patch(
           `/api/destinations/${editing.id}`,
           editing.kind === 'http'
-            ? { name: f.name, enabled: f.enabled, url: f.url, maxAttempts: Number(f.maxAttempts), timeoutMs: Number(f.timeoutMs), allowedActions: splitList(f.allowedActions) }
+            ? { name: f.name, enabled: f.enabled, url: f.url, maxAttempts: Number(f.maxAttempts), timeoutMs: Math.round(Number(f.timeoutMs) * 1000), allowedActions: splitList(f.allowedActions) }
             : { name: f.name, enabled: f.enabled, allowedActions: splitList(f.allowedActions), config: agentConfig },
         )
         onSaved()
@@ -98,7 +98,7 @@ function DestinationForm({
           name: f.name,
           url: f.url,
           maxAttempts: Number(f.maxAttempts),
-          timeoutMs: Number(f.timeoutMs),
+          timeoutMs: Math.round(Number(f.timeoutMs) * 1000),
           allowedActions: splitList(f.allowedActions),
         })
         onSaved(res.secret)
@@ -114,11 +114,11 @@ function DestinationForm({
   }
 
   return (
-    <form onSubmit={submit} aria-labelledby="dest-form-title" className="flex flex-col gap-4 border border-edge bg-raised p-4 shadow-panel sm:p-5">
-      <h2 id="dest-form-title" className="font-bold">
+    <form onSubmit={submit} aria-labelledby="dest-form-title" className="flex flex-col gap-3 rounded-ctl border border-line bg-raised p-4 shadow-panel">
+      <h2 id="dest-form-title" className="font-semibold">
         {editing ? `Edit ${editing.name}` : 'New destination'}
       </h2>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         {!editing ? (
           <Field label="Kind">
             {(p) => (
@@ -132,23 +132,23 @@ function DestinationForm({
         <Field label="Name">{(p) => <input {...p} className="input" required value={f.name} onChange={(e) => set('name', e.target.value)} />}</Field>
       </div>
       {f.kind === 'http' ? (
-        <div className="grid gap-4 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
           <Field label="URL" hint="http or https">
             {(p) => <input {...p} className="input font-mono" required type="url" value={f.url} onChange={(e) => set('url', e.target.value)} />}
           </Field>
           <Field label="Max attempts">
             {(p) => <input {...p} className="input" type="number" min={1} max={50} value={f.maxAttempts} onChange={(e) => set('maxAttempts', e.target.value)} />}
           </Field>
-          <Field label="Timeout (ms)">
-            {(p) => <input {...p} className="input" type="number" min={100} max={120000} value={f.timeoutMs} onChange={(e) => set('timeoutMs', e.target.value)} />}
+          <Field label="Timeout (s)">
+            {(p) => <input {...p} className="input" type="number" min={0.1} max={120} step={0.1} value={f.timeoutMs} onChange={(e) => set('timeoutMs', e.target.value)} />}
           </Field>
         </div>
       ) : (
         <>
           <Field label="System prompt" hint="Event text is untrusted. Relay adds a fixed preamble before this.">
-            {(p) => <textarea {...p} className="input min-h-40 font-mono" required rows={8} maxLength={20000} value={f.systemPrompt} onChange={(e) => set('systemPrompt', e.target.value)} />}
+            {(p) => <textarea {...p} className="input min-h-36 font-mono text-xs" required rows={8} maxLength={20000} value={f.systemPrompt} onChange={(e) => set('systemPrompt', e.target.value)} />}
           </Field>
-          <div className="grid gap-4 sm:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-4">
             <Field label="Model">{(p) => <input {...p} className="input font-mono" value={f.model} onChange={(e) => set('model', e.target.value)} />}</Field>
             <Field label="Max turns">
               {(p) => <input {...p} className="input" type="number" min={1} max={50} value={f.maxTurns} onChange={(e) => set('maxTurns', e.target.value)} />}
@@ -160,7 +160,7 @@ function DestinationForm({
               {(p) => <input {...p} className="input" type="number" min={0} max={50} value={f.maxMutatingActions} onChange={(e) => set('maxMutatingActions', e.target.value)} />}
             </Field>
           </div>
-          <p className="text-xs text-ink-2">Agents run with Relay&apos;s actions as their only tools: no shell, files, or web.</p>
+          <p className="text-xs text-ink-3">Agents run with Relay&apos;s actions as their only tools: no shell, files, or web.</p>
         </>
       )}
       <Field label="Allowed actions" hint="Comma-separated, such as reply, react, thread.history. Empty means all.">
@@ -172,7 +172,7 @@ function DestinationForm({
         </Check>
       ) : null}
       <FormError error={error} />
-      <div className="flex flex-wrap gap-2 border-t border-rule pt-4">
+      <div className="flex flex-wrap gap-2 border-t border-rule pt-3">
         <button className="btn btn-primary" disabled={busy}>
           {busy ? 'Saving…' : 'Save'}
         </button>
@@ -184,13 +184,15 @@ function DestinationForm({
   )
 }
 
+const COLS = 'grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 px-3 md:grid-cols-[minmax(0,13rem)_5.5rem_minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,0.8fr)_3.5rem_5.5rem]'
+
 export function Destinations() {
   const state = useLoad(() => get<{ items: Destination[] }>('/api/destinations'), [])
   const [mode, setMode] = useState<{ edit: Destination | null } | null>(null)
   const [secret, setSecret] = useState<{ label: string; value: string } | null>(null)
 
   const newButton = (
-    <button type="button" className="btn btn-primary" onClick={() => setMode({ edit: null })}>
+    <button type="button" className="btn btn-primary btn-sm" onClick={() => setMode({ edit: null })}>
       <Icon name="plus" className="size-3.5" />
       New destination
     </button>
@@ -214,7 +216,7 @@ export function Destinations() {
       ) : null}
       <Async
         state={state}
-        skeleton={<SkeletonRows rows={3} height="h-20" />}
+        skeleton={<SkeletonRows rows={4} />}
         empty={{
           when: (d) => d.items.length === 0,
           render: () => (
@@ -225,91 +227,83 @@ export function Destinations() {
         }}
       >
         {(d) => (
-          <ul aria-label="Destinations" className="divide-y divide-rule border-y border-rule">
+          <div role="table" aria-label="Destinations" className="min-w-0 border-t border-rule md:border-t-0">
+            <div role="row" className={cx('th hidden md:grid', COLS)}>
+              <span role="columnheader">Name</span>
+              <span role="columnheader">Status</span>
+              <span role="columnheader">Target</span>
+              <span role="columnheader">Limits</span>
+              <span role="columnheader">Actions allowed</span>
+              <span role="columnheader" className="text-right">
+                Routes
+              </span>
+              <span role="columnheader">
+                <span className="sr-only">Controls</span>
+              </span>
+            </div>
             {d.items.map((x) => (
-              <li key={x.id} className="flex flex-col gap-2 px-2 py-3">
-                <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                    <span className="grid h-6 min-w-9 place-items-center border border-rule bg-raised px-1 font-mono text-[0.6875rem] tracking-wide text-ink-2 uppercase">
-                      {jackCode(x.kind)}
-                    </span>
-                    <span className="min-w-0 truncate font-bold">{x.name}</span>
-                    <StatusMark value={x.enabled ? 'enabled' : 'disabled'} />
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button type="button" className="btn btn-sm" onClick={() => setMode({ edit: x })}>
-                      Edit
-                    </button>
-                    {x.kind === 'http' ? (
-                      <ConfirmButton
-                        small
-                        label="Rotate secret"
-                        question="The old secret stops working."
-                        confirmLabel="Rotate"
-                        onConfirm={async () => {
-                          const r = await post<{ secret: string }>(`/api/destinations/${x.id}/rotate-secret`)
-                          setSecret({ label: `New signing secret for ${x.name}`, value: r.secret })
-                        }}
-                      />
-                    ) : null}
+              <div role="row" key={x.id} className={cx('tr py-1 md:py-0', COLS)}>
+                <span role="cell" className="flex min-w-0 items-center gap-2">
+                  <span className="jack-code">{jackCode(x.kind)}</span>
+                  <span className="min-w-0 truncate font-medium">{x.name}</span>
+                  <CopyButton value={x.id} label={`Copy ${x.name} ID`} />
+                </span>
+                <span role="cell" className="text-xs">
+                  <StatusMark value={x.enabled ? 'enabled' : 'disabled'} />
+                </span>
+                <span role="cell" title={x.kind === 'http' ? (x.url ?? '') : x.config?.systemPrompt} className="min-w-0 truncate font-mono text-xs text-ink-2">
+                  {x.kind === 'http' ? x.url : x.config?.model}
+                </span>
+                <span role="cell" className="min-w-0 truncate text-xs text-ink-2">
+                  {x.kind === 'http'
+                    ? `${plural(x.maxAttempts, 'try', 'tries')} · ${x.timeoutMs / 1000}s`
+                    : `${plural(x.config?.maxTurns ?? 0, 'turn', 'turns')} · ${x.config?.timeoutSeconds}s · ${plural(x.config?.maxMutatingActions ?? 0, 'change', 'changes')}`}
+                </span>
+                <span role="cell" className="min-w-0 truncate font-mono text-xs text-ink-2">
+                  {x.allowedActions?.join(', ') ?? 'all'}
+                </span>
+                <span role="cell" className="text-xs text-ink-2 md:text-right">
+                  {x.routeCount ?? 0}
+                  <span className="md:sr-only"> routes</span>
+                </span>
+                <span role="cell" className="relative flex items-center justify-end gap-0.5">
+                  <button type="button" className="btn btn-sm btn-icon btn-quiet" aria-label={`Edit ${x.name}`} title="Edit" onClick={() => setMode({ edit: x })}>
+                    <Icon name="edit" className="size-3.5" />
+                  </button>
+                  {x.kind === 'http' ? (
                     <ConfirmButton
                       small
-                      danger
-                      label="Delete"
-                      confirmLabel="Delete destination"
+                      iconOnly
+                      icon="refresh"
+                      label={`Rotate ${x.name} secret`}
+                      question="Old secret stops working."
+                      confirmLabel="Rotate"
                       onConfirm={async () => {
-                        await del(`/api/destinations/${x.id}`)
-                        state.reload()
+                        const r = await post<{ secret: string }>(`/api/destinations/${x.id}/rotate-secret`)
+                        setSecret({ label: `New signing secret for ${x.name}`, value: r.secret })
                       }}
                     />
-                  </div>
-                </div>
-                <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm sm:grid-cols-[max-content_minmax(0,1fr)_max-content_minmax(0,1fr)]">
-                  <dt className="text-ink-2">ID</dt>
-                  <dd className="min-w-0">
-                    <CopyId value={x.id} label="destination ID" />
-                  </dd>
-                  {x.kind === 'http' ? (
-                    <>
-                      <dt className="text-ink-2">URL</dt>
-                      <dd className="min-w-0 truncate font-mono text-xs leading-5" title={x.url ?? ''}>
-                        {x.url}
-                      </dd>
-                      <dt className="text-ink-2">Retries</dt>
-                      <dd>
-                        {x.maxAttempts} attempts, {x.timeoutMs} ms timeout
-                      </dd>
-                    </>
                   ) : (
-                    <>
-                      <dt className="text-ink-2">Model</dt>
-                      <dd className="font-mono text-xs leading-5">{x.config?.model}</dd>
-                      <dt className="text-ink-2">Limits</dt>
-                      <dd>
-                        {x.config?.maxTurns} turns, {x.config?.timeoutSeconds}s, {x.config?.maxMutatingActions} changes
-                      </dd>
-                    </>
+                    <span className="w-6" />
                   )}
-                  <dt className="text-ink-2">Actions</dt>
-                  <dd className="font-mono text-xs leading-5">{x.allowedActions?.join(', ') ?? 'all'}</dd>
-                  <dt className="text-ink-2">Routes</dt>
-                  <dd>{x.routeCount ?? 0}</dd>
-                  {x.kind === 'agent' ? (
-                    <>
-                      <dt className="text-ink-2">Tools</dt>
-                      <dd>Relay actions only</dd>
-                    </>
-                  ) : null}
-                </dl>
-                {x.kind === 'agent' && x.config?.systemPrompt ? (
-                  <p className="line-clamp-2 max-w-[75ch] text-sm text-ink-2">
-                    <span className="font-bold text-ink">Prompt: </span>
-                    {x.config.systemPrompt}
-                  </p>
-                ) : null}
-              </li>
+                  <ConfirmButton
+                    small
+                    danger
+                    iconOnly
+                    icon="trash"
+                    label={`Delete ${x.name}`}
+                    question="Delete destination?"
+                    confirmLabel="Delete"
+                    onConfirm={async () => {
+                      await del(`/api/destinations/${x.id}`)
+                      state.reload()
+                    }}
+                  />
+                </span>
+              </div>
             ))}
-          </ul>
+          </div>
+
         )}
       </Async>
     </Page>

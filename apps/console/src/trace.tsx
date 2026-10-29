@@ -1,4 +1,5 @@
 import type { EventDetail, EventTrace, RoutedState, StatusCounts } from './api'
+import { condenseCause } from './cause'
 import { cx } from './components'
 
 export type LampState = 'ok' | 'warn' | 'bad' | 'off'
@@ -25,11 +26,11 @@ const ROUTED_TEXT: Record<RoutedState, [LampState, string]> = {
   pending: ['warn', 'Waiting to be routed'],
   routed: ['ok', 'Routed to destinations'],
   echo: ['ok', 'Skipped: echo of a Relay message'],
-  unmatched: ['warn', 'Not routed: no route matched'],
+  unmatched: ['off', 'Not routed: no route matched'],
   inactive: ['off', 'Not routed: connection not active'],
 }
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
 function aggregate(c: StatusCounts, noun: [string, string], none: string): [LampState, string] {
   const total = c.pending + c.succeeded + c.failed
@@ -103,8 +104,6 @@ export function Lamp({ state, className, index = 0 }: { state: LampState; classN
   )
 }
 
-const WIRE: Record<LampState, string> = { ok: 'ok', warn: 'warn', bad: 'bad', off: 'rule' }
-
 export function wireStates(stages: StageView[]): LampState[] {
   const firstBad = stages.findIndex((s) => s.state === 'bad')
   let last = -1
@@ -115,75 +114,44 @@ export function wireStates(stages: StageView[]): LampState[] {
   return stages.slice(1).map((s, i) => (i + 1 <= end ? s.state : 'off'))
 }
 
-const STROKE: Record<string, string> = { ok: 'stroke-ok', warn: 'stroke-warn', bad: 'stroke-bad', rule: 'stroke-edge' }
-const FILL: Record<string, string> = { ok: 'bg-ok', warn: 'bg-warn', bad: 'bg-bad', rule: 'bg-edge' }
-
 export const traceLabel = (stages: StageView[]) => `Trace. ${stages.map((s) => `${s.name}: ${s.text}`).join('. ')}.`
 
-export function TraceLamps({ trace }: { trace: EventTrace }) {
+const STROKE: Record<LampState, string> = { ok: 'stroke-ok', warn: 'stroke-warn', bad: 'stroke-bad', off: 'stroke-line' }
+const DOT: Record<LampState, string> = { ok: 'fill-ok stroke-ok', warn: 'fill-raised stroke-warn', bad: 'fill-bad stroke-bad', off: 'fill-ground stroke-edge' }
+
+export function TraceMini({ trace }: { trace: EventTrace }) {
   const stages = stagesOf(trace)
   const wires = wireStates(stages)
   return (
-    <span role="img" aria-label={traceLabel(stages)} className="relative grid grid-cols-5 items-center justify-items-center">
-      <svg viewBox="0 0 120 24" aria-hidden="true" focusable="false" className="absolute inset-0 h-full w-full">
-        {wires.map((w, i) => (
-          <line
-            key={i}
-            x1={12 + 24 * i + 6}
-            x2={12 + 24 * (i + 1) - 6}
-            y1="12"
-            y2="12"
-            strokeWidth={w === 'off' ? 1 : 1.5}
-            strokeDasharray={w === 'off' ? '2 2' : undefined}
-            className={STROKE[WIRE[w]]}
-          />
-        ))}
-      </svg>
-      {stages.map((s, i) => (
-        <span key={s.stage} title={`${s.name}: ${s.text}`} className="relative grid size-6 place-items-center">
-          <Lamp key={s.state} state={s.state} index={i} />
-        </span>
+    <svg role="img" aria-label={traceLabel(stages)} viewBox="0 0 56 10" className="h-2.5 w-14 shrink-0 overflow-visible">
+      <title>{stages.map((s) => `${s.code} ${s.text}`).join('\n')}</title>
+      {wires.map((w, i) => (
+        <line key={i} x1={8 + 12 * i} x2={16 + 12 * i} y1="5" y2="5" strokeWidth="1" className={STROKE[w]} />
       ))}
-    </span>
+      {stages.map((s, i) => (
+        <circle key={s.stage} cx={4 + 12 * i} cy="5" r={s.state === 'off' ? 2.5 : 3} strokeWidth={s.state === 'warn' ? 1.5 : 1} className={DOT[s.state]} />
+      ))}
+    </svg>
   )
 }
 
-export function TraceCodes({ className }: { className?: string }) {
-  return (
-    <span aria-hidden="true" className={cx('grid grid-cols-5 justify-items-center font-mono text-[0.625rem] leading-4 tracking-wider text-ink-3', className)}>
-      {STAGES.map(([stage, name, code]) => (
-        <abbr key={stage} title={name} className="no-underline">
-          {code}
-        </abbr>
-      ))}
-    </span>
-  )
-}
+const WIRE_BG: Record<LampState, string> = { ok: 'bg-ok', warn: 'bg-warn', bad: 'bg-bad', off: 'bg-line' }
 
 export function TraceDetail({ trace }: { trace: EventTrace }) {
   const stages = stagesOf(trace)
   const wires = wireStates(stages)
   return (
-    <ol aria-label="Trace" className="grid grid-cols-1 border-y border-rule sm:grid-cols-5">
+    <ol aria-label="Trace" className="flex flex-col">
       {stages.map((s, i) => {
         const w = wires[i]
-        const wire = w ? cx(FILL[WIRE[w]], w === 'off' && 'opacity-60') : null
         return (
-          <li key={s.stage} className="relative flex items-start gap-3 py-3 max-sm:border-b max-sm:border-rule max-sm:last:border-b-0 sm:flex-col sm:gap-2">
-            <span className="flex items-center self-stretch">
-              <Lamp key={s.state} state={s.state} index={i} className="size-4" />
-              {wire ? <span aria-hidden="true" className={cx('ml-1 hidden h-px flex-1 sm:block', wire)} /> : null}
+          <li key={s.stage} className="relative grid min-h-6 grid-cols-[1rem_4.5rem_minmax(0,1fr)] items-baseline gap-x-2">
+            <Lamp key={s.state} state={s.state} index={i} className="size-2.5 self-center justify-self-center" />
+            {w ? <span aria-hidden="true" className={cx('absolute top-[1.0625rem] left-[0.5rem] h-[0.875rem] w-px', WIRE_BG[w])} /> : null}
+            <span className="font-medium">
+              {s.name}
             </span>
-            {wire ? <span aria-hidden="true" className={cx('absolute top-7.5 -bottom-3 left-[7.5px] w-px sm:hidden', wire)} /> : null}
-            <span className="min-w-0 pr-3">
-              <span className="block font-bold">
-                {s.name}{' '}
-                <abbr title={s.name} className="font-mono text-xs font-normal tracking-wider text-ink-3 no-underline">
-                  {s.code}
-                </abbr>
-              </span>
-              <span className="block text-sm text-ink-2">{s.text}</span>
-            </span>
+            <span className={cx('min-w-0', s.state === 'bad' ? 'text-bad-ink' : s.state === 'warn' ? 'text-warn-ink' : 'text-ink-2')}>{s.text}</span>
           </li>
         )
       })}
@@ -198,14 +166,33 @@ const STATUS_LAMP: Record<string, LampState> = {
   failed: 'bad',
   pending: 'warn',
   running: 'warn',
+  retrying: 'warn',
 }
 
 export function StatusMark({ value, label }: { value: string; label?: string }) {
   const state = STATUS_LAMP[value] ?? 'off'
   return (
-    <span className={cx('inline-flex items-center gap-1.5 text-sm font-bold whitespace-nowrap', state === 'bad' ? 'text-bad-ink' : state === 'warn' ? 'text-warn-ink' : state === 'ok' ? 'text-ink' : 'text-ink-2')}>
-      <Lamp key={state} state={state} />
+    <span className={cx('inline-flex items-center gap-1.5 whitespace-nowrap', state === 'bad' ? 'text-bad-ink' : state === 'warn' ? 'text-warn-ink' : state === 'ok' ? 'text-ink' : 'text-ink-3')}>
+      <Lamp key={state} state={state} className="size-2.5" />
       {label ?? value}
     </span>
   )
 }
+
+export interface Outcome {
+  text: string
+  full: string
+  tone: 'bad' | 'warn' | 'plain'
+}
+
+export function outcomeOf(t: EventTrace): Outcome {
+  const [, , routed, delivered, acted] = stagesOf(t)
+  if (t.failedDelivery) return { text: condenseCause(t.failedDelivery.lastError), full: t.failedDelivery.lastError ?? 'Delivery failed with no error text', tone: 'bad' }
+  if (t.actions.failed) return { text: `${t.actions.failed} action failed`, full: acted!.text, tone: 'bad' }
+  if (t.routed === 'pending') return { text: 'routing', full: routed!.text, tone: 'warn' }
+  if (t.routed !== 'routed') return { text: SHORT[t.routed], full: routed!.text, tone: 'plain' }
+  if (t.deliveries.pending) return { text: `${t.deliveries.pending} pending`, full: delivered!.text, tone: 'warn' }
+  return { text: `${t.deliveries.succeeded} delivered`, full: delivered!.text, tone: 'plain' }
+}
+
+const SHORT: Record<RoutedState, string> = { pending: 'routing', routed: 'routed', echo: 'echo skipped', unmatched: 'no route', inactive: 'line inactive' }

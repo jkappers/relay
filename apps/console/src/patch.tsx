@@ -25,19 +25,19 @@ function Jack({ code, children, side, muted }: { code: string; children: ReactNo
   return (
     <span
       className={cx(
-        'relative flex h-cell min-w-0 items-center gap-2 border bg-raised pr-2 pl-1 text-sm',
-        muted ? 'border-rule text-ink-2' : 'border-edge',
+        'relative flex h-6 min-w-0 items-center gap-1.5 rounded-jack border bg-raised pr-2 pl-0.5 text-xs',
+        muted ? 'border-rule text-ink-2' : 'border-line',
       )}
     >
-      <span className="grid h-6 min-w-9 shrink-0 place-items-center border border-rule bg-ground px-1 font-mono text-[0.6875rem] leading-none tracking-wide text-ink-2 uppercase">
+      <span className="jack-code h-4.5 min-w-7 shrink-0 bg-ground">
         {jackCode(code)}
       </span>
       <span className="min-w-0 flex-1 truncate">{children}</span>
       <span
         aria-hidden="true"
         className={cx(
-          'absolute top-1/2 size-2 -translate-y-1/2 border',
-          side === 'out' ? 'hidden sm:block sm:-right-1' : '-left-1',
+          'absolute top-1/2 size-1.5 -translate-y-1/2 border',
+          side === 'out' ? 'hidden @md:block -right-[3.5px]' : '-left-[3.5px]',
           muted ? 'border-edge bg-ground' : 'border-accent bg-accent',
         )}
       />
@@ -59,21 +59,21 @@ export function Patch({
   label: string
 }) {
   const n = Math.max(targets.length, 1)
-  const step = 40
-  const h = n * step - 8
+  const step = 28
+  const h = n * step - 4
   const cords = targets.map((_, i) => {
-    const y = i * step + 16
-    return `M0 16 C 40 16, 40 ${y}, 80 ${y}`
+    const y = i * step + 12
+    return `M0 12 C 32 12, 32 ${y}, 64 ${y}`
   })
   return (
-    <div className="grid min-w-0 grid-cols-1 sm:grid-cols-[minmax(0,15rem)_5rem_minmax(0,1fr)]">
+    <div className="@container min-w-0"><div className="grid min-w-0 grid-cols-1 @md:grid-cols-[minmax(0,11rem)_3rem_minmax(0,1fr)]">
       <div className="min-w-0">
         <span className="sr-only">Line: </span>
         <Jack code={sourceCode} side="out" muted={!live}>
           {sourceLabel}
         </Jack>
       </div>
-      <svg viewBox={`0 0 80 ${h}`} preserveAspectRatio="none" aria-hidden="true" focusable="false" className="hidden h-full w-full overflow-visible sm:block">
+      <svg viewBox={`0 0 64 ${h}`} preserveAspectRatio="none" aria-hidden="true" focusable="false" className="hidden h-full w-full overflow-visible @md:block">
         {cords.map((d, i) => (
           <path
             key={targets[i]!.key}
@@ -88,26 +88,29 @@ export function Patch({
       </svg>
       <ul
         aria-label={label}
-        className="mt-2 ml-4 flex min-w-0 flex-col gap-2 border-l border-edge pl-4 sm:mt-0 sm:ml-0 sm:border-l-0 sm:pl-0"
+        className="mt-1 ml-3 flex min-w-0 flex-col gap-1 border-l border-line pl-3 @md:mt-0 @md:ml-0 @md:border-l-0 @md:pl-0"
       >
-        {targets.length === 0 ? <li className="flex h-cell items-center text-sm text-ink-3">No destinations</li> : null}
+        {targets.length === 0 ? <li className="flex h-6 items-center text-xs text-ink-3">No destinations</li> : null}
         {targets.map((t) => (
-          <li key={t.key} className="relative min-w-0 before:absolute before:top-1/2 before:-left-4 before:h-px before:w-4 before:bg-edge sm:before:hidden">
+          <li key={t.key} className="relative min-w-0 before:absolute before:top-1/2 before:-left-3 before:h-px before:w-3 before:bg-line @md:before:hidden">
             <Jack code={t.code} side="in" muted={!live}>
-              <span className="inline-flex min-w-0 max-w-full items-center gap-2">
+              <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
                 {t.lamp ? (
                   <span title={t.lamp.text} className="inline-flex">
-                    <Lamp key={t.lamp.state} state={t.lamp.state} />
+                    <Lamp key={t.lamp.state} state={t.lamp.state} className="size-2.5" />
                   </span>
                 ) : null}
-                <span className="truncate">{t.label}</span>
-                {t.note ? <span className="truncate text-xs text-ink-3">{t.note}</span> : null}
+                <span className="shrink-0">{t.label}</span>
+                {t.note ? <span className="min-w-0 shrink-[9] truncate text-ink-3">{t.note}</span> : null}
                 {t.lamp ? <span className="sr-only">, {t.lamp.text}</span> : null}
               </span>
             </Jack>
           </li>
         ))}
       </ul>
-    </div>
+    </div></div>
   )
 }
+
+export const lineId = (c: Connection | undefined, fallbackId: string) =>
+  c?.provider === 'slack' ? (c.userId ?? c.teamId ?? c.id.slice(0, 8)) : (c?.id ?? fallbackId).slice(0, 8)

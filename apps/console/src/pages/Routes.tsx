@@ -86,22 +86,22 @@ function Preview({ form }: { form: RouteForm }) {
   }, [fields, form.eventType])
 
   return (
-    <section aria-labelledby="preview-title" className="flex min-w-0 flex-col gap-2">
+    <section aria-labelledby="preview-title" className="flex min-w-0 flex-col gap-1.5">
       <SectionHead id="preview-title" title="Live preview">
         {busy ? <span>Checking…</span> : null}
       </SectionHead>
       <div aria-live="polite" className="min-w-0">
-        {error ? <p className="text-sm text-bad-ink">{error}</p> : null}
-        {!form.eventType ? <p className="text-sm text-ink-2">Enter an event type to see matches.</p> : null}
+        {error ? <p className="text-bad-ink">{error}</p> : null}
+        {!form.eventType ? <p className="text-ink-2">Enter an event type to see matches.</p> : null}
         {result ? (
           <>
-            <p className="text-sm">
-              <span className="font-bold">{result.matches.length}</span> of the last {result.scanned} events would match.
+            <p>
+              <span className="font-semibold">{result.matches.length}</span> of the last {result.scanned} events would match.
             </p>
             {result.matches.length > 0 ? (
-              <ul aria-label="Matching events" className="mt-2 divide-y divide-rule border-y border-rule">
+              <ul aria-label="Matching events" className="mt-1.5 divide-y divide-rule border-y border-rule">
                 {result.matches.slice(0, 10).map((m) => (
-                  <li key={m.id} className="flex min-w-0 items-baseline gap-3 px-1 py-1.5 text-sm">
+                  <li key={m.id} className="flex h-7 min-w-0 items-center gap-3 px-1">
                     <a href={`#/events/${m.id}`} className="shrink-0 font-mono text-xs">
                       {m.type}
                     </a>
@@ -168,13 +168,13 @@ function RouteEditor({
   }
 
   return (
-    <form onSubmit={submit} aria-labelledby="route-form-title" className="grid gap-6 border border-edge bg-raised p-4 shadow-panel sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-      <div className="flex min-w-0 flex-col gap-4">
-        <h2 id="route-form-title" className="font-bold">
+    <form onSubmit={submit} aria-labelledby="route-form-title" className="grid gap-5 rounded-ctl border border-line bg-raised p-4 shadow-panel lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="flex min-w-0 flex-col gap-3">
+        <h2 id="route-form-title" className="font-semibold">
           {editing ? `Edit ${editing.name}` : 'New route'}
         </h2>
         <Field label="Name">{(p) => <input {...p} className="input" required value={f.name} onChange={(e) => set('name', e.target.value)} />}</Field>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Event type" hint="Exact, or a prefix ending in *, such as slack.message.*">
             {(p) => <input {...p} className="input font-mono" required value={f.eventType} onChange={(e) => set('eventType', e.target.value)} />}
           </Field>
@@ -197,7 +197,7 @@ function RouteEditor({
             {(p) => <input {...p} className="input font-mono" value={f.textRegex} onChange={(e) => set('textRegex', e.target.value)} />}
           </Field>
         </div>
-        <div className="flex flex-wrap gap-x-6">
+        <div className="flex flex-wrap gap-x-5">
           <Check checked={f.includeSubtypes} onChange={(v) => set('includeSubtypes', v)}>
             Include message subtypes
           </Check>
@@ -205,10 +205,10 @@ function RouteEditor({
             Enabled
           </Check>
         </div>
-        <fieldset className="flex min-w-0 flex-col gap-1">
-          <legend className="label mb-1">Destinations</legend>
+        <fieldset className="flex min-w-0 flex-col">
+          <legend className="label mb-0.5">Destinations</legend>
           {destinations.length === 0 ? (
-            <p className="text-sm text-ink-2">
+            <p className="text-ink-2">
               Create a destination first. <a href="#/destinations">Go to destinations</a>
             </p>
           ) : null}
@@ -223,18 +223,18 @@ function RouteEditor({
           ))}
         </fieldset>
         <FormError error={error} />
-        <div className="flex flex-wrap items-center gap-2 border-t border-rule pt-4">
+        <div className="flex flex-wrap items-center gap-2 border-t border-rule pt-3">
           <button className="btn btn-primary" disabled={busy || f.destinationIds.length === 0}>
             {busy ? 'Saving…' : 'Save'}
           </button>
           <button type="button" className="btn" onClick={onDone}>
             Cancel
           </button>
-          {f.destinationIds.length === 0 ? <span className="text-xs text-ink-2">Pick at least one destination.</span> : null}
+          {f.destinationIds.length === 0 ? <span className="text-xs text-ink-3">Pick at least one destination.</span> : null}
         </div>
       </div>
-      <div className="flex min-w-0 flex-col gap-6">
-        <section aria-labelledby="patch-title" className="flex min-w-0 flex-col gap-3">
+      <div className="flex min-w-0 flex-col gap-5">
+        <section aria-labelledby="patch-title" className="flex min-w-0 flex-col gap-1.5">
           <SectionHead id="patch-title" title="Patch" />
           <RoutePatch
             route={{ connectionId: f.connectionId || null, destinationIds: f.destinationIds }}
@@ -251,9 +251,9 @@ function RouteEditor({
 
 function Rule({ term, children }: { term: string; children: ReactNode }) {
   return (
-    <div className="flex min-w-0 gap-1.5">
-      <dt className="text-ink-2">{term}</dt>
-      <dd className="min-w-0 break-words">{children}</dd>
+    <div className="flex min-w-0 gap-1">
+      <dt className="text-ink-3">{term}</dt>
+      <dd className="min-w-0 truncate text-ink-2">{children}</dd>
     </div>
   )
 }
@@ -274,16 +274,16 @@ export function Routes() {
   const [toggleError, setToggleError] = useState<string | null>(null)
 
   const newButton = (
-    <button type="button" className="btn btn-primary" onClick={() => setEditor({ edit: null })}>
+    <button type="button" className="btn btn-primary btn-sm" onClick={() => setEditor({ edit: null })}>
       <Icon name="plus" className="size-3.5" />
       New route
     </button>
   )
 
   return (
-    <Page title="Routes" meta="Each route patches a line to one or more destinations. Only enabled routes carry calls." actions={newButton}>
+    <Page title="Routes" meta="Each route patches a line to destinations. Only enabled routes carry calls." actions={newButton}>
       <FormError error={toggleError} />
-      <Async state={state} skeleton={<SkeletonRows rows={3} height="h-28" />}>
+      <Async state={state} skeleton={<SkeletonRows rows={4} height="h-14" />}>
         {(d) => (
           <>
             {editor ? (
@@ -303,63 +303,71 @@ export function Routes() {
                 A route matches events by type and text, then sends each match to its destinations. The live preview shows what it would catch before you save.
               </Empty>
             ) : (
-              <ul aria-label="Routes" className="divide-y divide-rule border-y border-rule">
+              <ul aria-label="Routes" className="border-t border-rule">
                 {d.routes.map((r) => (
-                  <li key={r.id} className="grid min-w-0 gap-x-8 gap-y-3 px-2 py-4 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-                    <div className="flex min-w-0 flex-col gap-2">
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                        <h3 className="min-w-0 truncate font-bold">{r.name}</h3>
-                        <StatusMark value={r.enabled ? 'enabled' : 'disabled'} />
+                  <li key={r.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-2 border-b border-rule px-3 py-2 hover:bg-hover lg:grid-cols-[minmax(0,17rem)_minmax(0,1fr)_auto] lg:items-start">
+                    <div className="flex min-w-0 flex-col">
+                      <div className="flex min-h-6 items-center gap-2">
+                        <h3 className="min-w-0 truncate font-medium">{r.name}</h3>
+                        <span className="text-xs">
+                          <StatusMark value={r.enabled ? 'enabled' : 'disabled'} />
+                        </span>
                       </div>
-                      <dl className="flex flex-col gap-0.5 text-sm">
-                        <Rule term="Type">
+                      <dl className="flex min-w-0 flex-wrap gap-x-3 text-xs">
+                        <Rule term="type">
                           <code>{r.eventType}</code>
                         </Rule>
-                        {r.textContains ? <Rule term="Contains">{r.textContains}</Rule> : null}
+                        {r.textContains ? <Rule term="contains">{r.textContains}</Rule> : null}
                         {r.textRegex ? (
-                          <Rule term="Regex">
+                          <Rule term="regex">
                             <code>{r.textRegex}</code>
                           </Rule>
                         ) : null}
-                        {r.includeSubtypes ? <Rule term="Subtypes">included</Rule> : null}
+                        {r.includeSubtypes ? <Rule term="subtypes">included</Rule> : null}
                       </dl>
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        <button type="button" className="btn btn-sm" onClick={() => setEditor({ edit: r })}>
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={async () => {
-                            setToggleError(null)
-                            try {
-                              await post(`/api/routes/${r.id}/${r.enabled ? 'disable' : 'enable'}`)
-                              state.reload()
-                            } catch (e) {
-                              setToggleError(errorText(e))
-                            }
-                          }}
-                        >
-                          {r.enabled ? 'Disable' : 'Enable'}
-                        </button>
-                        <ConfirmButton
-                          small
-                          danger
-                          label="Delete"
-                          confirmLabel="Delete route"
-                          onConfirm={async () => {
-                            await del(`/api/routes/${r.id}`)
-                            state.reload()
-                          }}
-                        />
-                      </div>
                     </div>
-                    <div className="min-w-0">
+                    <div className="min-w-0 max-w-[38rem] max-lg:col-span-2">
                       <RoutePatch route={r} connections={d.connections} destinations={d.destinations} live={r.enabled} />
+                    </div>
+                    <div role="group" aria-label={`${r.name} actions`} className="relative flex items-center gap-0.5 max-lg:col-start-2 max-lg:row-start-1 max-lg:self-start">
+                      <button type="button" className="btn btn-sm btn-icon btn-quiet" aria-label={`Edit ${r.name}`} title="Edit" onClick={() => setEditor({ edit: r })}>
+                        <Icon name="edit" className="size-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-icon btn-quiet"
+                        aria-label={`${r.enabled ? 'Disable' : 'Enable'} ${r.name}`}
+                        title={r.enabled ? 'Disable' : 'Enable'}
+                        onClick={async () => {
+                          setToggleError(null)
+                          try {
+                            await post(`/api/routes/${r.id}/${r.enabled ? 'disable' : 'enable'}`)
+                            state.reload()
+                          } catch (e) {
+                            setToggleError(errorText(e))
+                          }
+                        }}
+                      >
+                        <Icon name="power" className={r.enabled ? 'size-3.5 text-ok-ink' : 'size-3.5'} />
+                      </button>
+                      <ConfirmButton
+                        small
+                        danger
+                        iconOnly
+                        icon="trash"
+                        label={`Delete ${r.name}`}
+                        question="Delete route?"
+                        confirmLabel="Delete"
+                        onConfirm={async () => {
+                          await del(`/api/routes/${r.id}`)
+                          state.reload()
+                        }}
+                      />
                     </div>
                   </li>
                 ))}
               </ul>
+
             )}
           </>
         )}
