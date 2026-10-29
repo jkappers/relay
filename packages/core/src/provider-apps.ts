@@ -110,6 +110,14 @@ export function activeSlackSigningSecrets(config: SlackAppConfig, now: Date = ne
   return out
 }
 
+/** The Discord bot token as the store sees it now. Undefined when not set up, incomplete, or invalid. */
+export function discordBotTokenReader(store: Pick<ProviderAppStore, 'get'>): () => Promise<string | undefined> {
+  return async () => {
+    const current = await store.get('discord')
+    return current.state === 'ready' ? (current.config.botToken ?? undefined) : undefined
+  }
+}
+
 /** A Discord bot token starts with the bot user id in base64. Returns null if it does not parse. */
 export function discordBotIdFromToken(token: string): string | null {
   const head = token.split('.')[0]
