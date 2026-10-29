@@ -2,16 +2,16 @@
 
 Relay is a personal event-ingest service. Providers like Slack send it events. Relay checks each event's signature, saves it, and puts it on a queue. A worker picks it up from there.
 
-Milestones 1 to 3 are done: ingest, routing, signed HTTP delivery with retries, and actions (reply, react, and more) with a loop guard. Agents come later.
+Milestones 1 to 4 are done: ingest, routing, signed HTTP delivery with retries, actions (reply, react, and more) with a loop guard, and agent destinations that run Claude on an event.
 
 ## How an event flows
 
 1. Ingress verifies and stores the event, then queues a `route` job.
 2. The router loads the event. If its connection isn't active, it stops.
 3. Each enabled route that matches creates one delivery per destination. A unique index on `(event, route, destination)` means routing an event twice never makes duplicates.
-4. The dispatcher POSTs each delivery to its destination, signed. One attempt per job.
+4. The dispatcher POSTs each `http` delivery to its destination, signed. One attempt per job. For an `agent` destination it queues an `agent` job instead (see Agents below).
 5. 2xx means `succeeded`. Network errors, timeouts, 408, 429, and 5xx retry with exponential backoff and full jitter (5s base, 15 min cap, up to the destination's `max_attempts`). A numeric `Retry-After` on a 429 is honored, up to the cap. Other responses (other 4xx, 3xx) fail at once. Redirects are not followed.
-6. A sweeper in the worker runs at startup and every minute. It requeues `route` jobs for events that were enqueued but never routed (`routed_at` is null) and `dispatch` jobs for deliveries stuck `pending`, if they are older than the grace period. Queued jobs are keyed by event or delivery id (queue policy `short`), so a sweep never adds a second waiting job. Max 100 rows per kind per sweep.
+6. A sweeper in the worker runs at startup and every minute. It requeues `route` jobs for events that were enqueued but never routed (`routed_at` is null) and `dispatch` jobs (`agent` jobs for agent deliveries) for deliveries stuck `pending`, if they are older than the grace period. Queued jobs are keyed by event or delivery id (queue policy `short`), so a sweep never adds a second waiting job. Max 100 rows per kind per sweep.
 7. A delivery that runs out of attempts, or fails at once, is `failed`. Replay it with the CLI.
 8. If a succeeded delivery returned `{actions: [...]}`, an `actions` job runs them (see Actions below).
 9. Before routing, the router drops events that relay itself posted (see Loop guard below).
@@ -30,10 +30,11 @@ Events with no text never match a text filter.
 | Path | What it is |
 |---|---|
 | `apps/server` | Hono HTTP server: ingress, Slack OAuth, `POST /actions`, `/metrics`, `/healthz` |
-| `apps/worker` | pg-boss consumers: router, dispatcher, and actions, plus `/metrics` and `/healthz` |
+| `apps/worker` | pg-boss consumers: router, dispatcher, actions, and agent runs, plus `/metrics` and `/healthz` |
 | `packages/core` | Config, crypto, DB schema and migrations, queue, envelope, provider interface, metrics |
 | `packages/providers/slack` | Slack adapter: signature check, normalize, OAuth |
 | `packages/providers/webhook` | Generic signed-webhook adapter |
+| `packages/destinations/agent` | Agent runner (Claude Agent SDK), tool set, prompts |
 
 ## Run it
 
@@ -73,6 +74,10 @@ Tests use the `relay_test` database. Compose creates it on first start, so tests
 | `DISPATCH_BACKOFF_BASE_MS`, `DISPATCH_BACKOFF_CAP_MS` | worker | Retry backoff. Defaults 5000 and 900000. |
 | `SWEEP_INTERVAL_SECONDS`, `SWEEP_GRACE_SECONDS` | worker | How often the sweeper runs (60) and how old stuck work must be before it is requeued (300). |
 | `WORKER_POLL_SECONDS` | worker | Queue poll interval. Default 2, minimum 0.5. |
+| `ANTHROPIC_API_KEY` | worker | Needed to run agents. Not needed otherwise. If it is missing, agent runs fail with `missing_api_key` and the worker keeps running. Never logged. |
+| `AGENT_CONCURRENCY` | worker | How many agent runs at once. Default 1. |
+| `AGENT_BACKOFF_BASE_MS`, `AGENT_BACKOFF_CAP_MS` | worker | Retry backoff for agent runs that fail before any change. Defaults 15000 and 300000. |
+| `RELAY_AGENT_RUNNER` | worker | `sdk` (default) or `fake`. `fake` posts a canned reply with no API call, for tests and demos. Refused when `NODE_ENV=production`. |
 | `TEST_DATABASE_URL` | tests | Optional. Defaults to `relay_test` in compose. |
 
 Make a master key:
@@ -101,12 +106,48 @@ Temporary until the console. Run from the repo root with `pnpm --filter @relay/s
 | Script | Does |
 |---|---|
 | `destinations:create --name N --url U [--max-attempts 8] [--timeout-ms 10000] [--allowed-actions reply,react]` | Creates an HTTP destination. Prints its id and signing secret once. |
+| `destinations:create --kind agent --name N --system-prompt-file F [--model M] [--max-turns 8] [--timeout-seconds 300] [--max-mutating-actions 3] [--allowed-actions thread.history,reply]` | Creates an agent destination. See Agents. |
+| `agent-runs:list [--status failed]` | Lists the 100 newest agent runs: id, delivery, status, turns, tokens, cost. |
 | `routes:create --name N --event-type T --destination ID [--destination ID...] [--connection ID] [--contains S] [--regex R] [--include-subtypes]` | Creates a route. |
 | `routes:list` | Lists routes. |
 | `tokens:revoke <jti>` | Revokes a reply token. Find the jti in `deliveries.last_reply_jti`. |
 | `deliveries:list [--status failed]` | Lists the 100 newest deliveries. |
 | `deliveries:replay <deliveryId>` | Resets a `failed` delivery to `pending` with 0 attempts and queues it. |
 | `events:replay <eventId>` | Queues the event for routing again. Existing deliveries are kept. Only new matches (a new route, a new destination) create deliveries. |
+
+## Agents
+
+An `agent` destination does not POST anywhere. The worker runs a Claude agent on the event, with the [Claude Agent SDK](docs/adr/0004-agent-sdk.md). The agent can use relay's actions for that event, and nothing else. It can read the thread and reply as you.
+
+Config (stored on the destination):
+
+| Field | Default | Meaning |
+|---|---|---|
+| `systemPrompt` | required | Your instructions. Relay adds a fixed preamble before it. |
+| `model` | `claude-sonnet-5-5` | Model ID. |
+| `maxTurns` | 8 | Most tool round trips per run. |
+| `timeoutSeconds` | 300 | Wall-clock limit per run. |
+| `maxMutatingActions` | 3 | Most Slack changes (reply, post, react, update) per run. Past that, tools return an error. |
+
+`--allowed-actions` picks which tools exist. An action that is not allowed is not offered to the agent at all.
+
+How a run goes: the dispatcher queues an `agent` job. The delivery stays `pending` until the run ends, then becomes `succeeded` or `failed`. Agent jobs have their own queue, so slow runs never hold up `http` deliveries. If a run fails before it changed anything, it is retried (3 attempts, with backoff). **If it fails after it changed something, it is never run again**, so you never get a second reply. It is marked `failed` with `error = not_retried_after_mutation`. The sweeper requeues stuck agent deliveries, and a lease on the run row means two jobs can never run the same delivery at once. `agent-runs:list` shows the outcome, and the run row keeps the final text and the tool calls.
+
+### Security model
+
+Anyone who can message you controls the event text, so **prompt injection is expected**. The design assumes the model may obey it. What holds even then:
+
+- The agent has no shell, files, web, or other Claude Code tools. Only relay's action tools exist, and a tool the destination does not allow is missing.
+- It loads none of your settings, CLAUDE.md, MCP servers, hooks, or skills. It runs in an empty temp directory with a minimal environment.
+- It cannot pick a channel or thread. Every action goes to the source event's thread, as in Actions above.
+- It is capped by turns, time, and Slack changes per run.
+- The prompt tells the model the event is untrusted data. That helps, but it is not the main control.
+
+What can still happen: a crafted message may make the agent post an unwanted reply in that same thread, as you, up to the cap. Pick a prompt, a small `--allowed-actions` list, and a low cap with that in mind. Replies appear publicly as you.
+
+### Cost and limits
+
+You pay for the Anthropic API calls. Each run records turns, tokens, and the SDK's cost estimate (an estimate, not a bill). Costs are bounded by `maxTurns`, `timeoutSeconds`, retries (3 attempts), and `AGENT_CONCURRENCY`. Watch `relay_agent_cost_usd_total` and `relay_agent_tokens_total` (see `docs/metrics.md`).
 
 ## Verify a delivery
 
