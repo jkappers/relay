@@ -123,6 +123,19 @@ function decodeCursor(cursor: string): [string, string] | null {
   }
 }
 
+interface StatusCounts {
+  pending: number
+  succeeded: number
+  failed: number
+}
+
+interface EventTrace {
+  routed: 'pending' | 'inactive' | 'echo' | 'routed' | 'unmatched'
+  deliveries: StatusCounts
+  actions: StatusCounts
+  failedDelivery: { id: string; lastError: string | null } | null
+}
+
 const eventsQuery = z.object({
   provider: z.string().min(1).optional(),
   connectionId: z.uuid().optional(),
@@ -436,8 +449,42 @@ export function consoleApi(deps: ConsoleApiDeps) {
         cursorTs: sql<string>`${events.receivedAt}::text`,
         deliveryCount: sql<number>`(select count(*)::int from deliveries d where d.event_id = events.id)`,
         failedCount: sql<number>`(select count(*)::int from deliveries d where d.event_id = events.id and d.status = 'failed')`,
+        trace: sql<EventTrace>`json_build_object(
+          'routed', case
+            when ${events.routedAt} is null then 'pending'
+            when ${connections.status} is distinct from 'active' then 'inactive'
+            when ${events.provider} = 'slack' and exists (
+              select 1 from sent_messages s
+              where s.connection_id = events.connection_id
+                and s.channel = ${events.envelope}->'context'->>'channelId'
+                and s.ts = ${events.envelope}->'context'->>'messageId'
+            ) then 'echo'
+            when exists (select 1 from deliveries d where d.event_id = events.id) then 'routed'
+            else 'unmatched'
+          end,
+          'deliveries', (
+            select json_build_object(
+              'pending', count(*) filter (where d.status = 'pending')::int,
+              'succeeded', count(*) filter (where d.status = 'succeeded')::int,
+              'failed', count(*) filter (where d.status = 'failed')::int
+            ) from deliveries d where d.event_id = events.id
+          ),
+          'actions', (
+            select json_build_object(
+              'pending', count(*) filter (where a.status = 'pending')::int,
+              'succeeded', count(*) filter (where a.status = 'succeeded')::int,
+              'failed', count(*) filter (where a.status = 'failed')::int
+            ) from actions_log a join deliveries d on d.id = a.delivery_id where d.event_id = events.id
+          ),
+          'failedDelivery', (
+            select json_build_object('id', d.id, 'lastError', d.last_error)
+            from deliveries d where d.event_id = events.id and d.status = 'failed'
+            order by d.updated_at desc, d.id desc limit 1
+          )
+        )`,
       })
       .from(events)
+      .leftJoin(connections, eq(connections.id, events.connectionId))
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(desc(events.receivedAt), desc(events.id))
       .limit(q.limit + 1)
