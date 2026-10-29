@@ -10,6 +10,7 @@ export type NewRoute =
   | { kind: 'pick' }
   | { kind: 'connect'; provider: ProviderId }
   | { kind: 'setup'; provider: ProviderId }
+  | { kind: 'servers'; provider: 'discord'; grant: string }
   | { kind: 'form'; provider: FormProvider }
 
 export interface Viewer {
@@ -38,6 +39,8 @@ export const isNewPath = (path: string) => path === '/new' || path.startsWith('/
 
 /** A `#/new...` path as a route. Null for anything the wizard doesn't own. */
 export function parseNewPath(path: string): NewRoute | null {
+  const servers = /^\/new\/discord\/servers\/([A-Za-z0-9_.-]{1,60000})$/.exec(path)
+  if (servers) return { kind: 'servers', provider: 'discord', grant: servers[1]! }
   const m = /^\/new(?:\/(slack|discord|sms|webhook)(\/setup)?)?$/.exec(path)
   if (!m) return null
   const provider = m[1] as WizardProvider | undefined
@@ -52,6 +55,8 @@ export function newPath(route: NewRoute): string {
       return '/new'
     case 'setup':
       return `/new/${route.provider}/setup`
+    case 'servers':
+      return `/new/discord/servers/${route.grant}`
     default:
       return `/new/${route.provider}`
   }
@@ -63,7 +68,9 @@ export function newPath(route: NewRoute): string {
  */
 export function guard(route: NewRoute, installs: Installs | null, viewer: Viewer): NewRoute {
   if (route.kind === 'setup' && !viewer.isAdmin) return { kind: 'connect', provider: route.provider }
-  if (route.kind === 'connect' && installs && !installs[route.provider] && viewer.isAdmin) return { kind: 'setup', provider: route.provider }
+  if ((route.kind === 'connect' || route.kind === 'servers') && installs && !installs[route.provider]) {
+    return viewer.isAdmin ? { kind: 'setup', provider: route.provider } : { kind: 'connect', provider: route.provider }
+  }
   return route
 }
 
@@ -76,3 +83,9 @@ export function providerCards(installs: Installs | null, viewer: Viewer): Provid
 }
 
 export const oauthStartPath = (provider: ProviderId) => `/oauth/${provider}/start`
+
+/** Step one of the Discord easy connect: link Discord to list the servers you manage. */
+export const discordLinkPath = () => '/oauth/discord/start?step=identify'
+
+/** Add the bot to one chosen server, skipping Discord's server picker. */
+export const discordInvitePath = (guildId: string) => `/oauth/discord/start?guild_id=${encodeURIComponent(guildId)}`

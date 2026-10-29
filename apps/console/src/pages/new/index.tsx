@@ -4,6 +4,7 @@ import { useInstalls } from '../connection-forms'
 import { Connect } from './Connect'
 import { Form } from './Form'
 import { Pick } from './Pick'
+import { Servers } from './Servers'
 import { Setup } from './Setup'
 
 /** The `#/new...` pages: pick a provider, then set it up or connect it. */
@@ -25,6 +26,8 @@ export function NewFlow({ path, viewer }: { path: string; viewer: Viewer }) {
       return <Form key={route.provider} provider={route.provider} />
     case 'connect':
       return <Connect provider={route.provider} ready={installs ? installs[route.provider] !== null : null} viewer={viewer} />
+    case 'servers':
+      return <Servers grant={route.grant} />
     case 'setup':
       return <Setup provider={route.provider} ready={installs?.[route.provider] != null} />
   }
