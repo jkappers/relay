@@ -1,6 +1,7 @@
+import { eq } from 'drizzle-orm'
 import { schema } from '@relay/core'
 import { describe, expect, it } from 'vitest'
-import { login, useHarness } from './harness'
+import { signIn, useHarness, type Account } from './harness'
 
 const h = useHarness()
 
@@ -13,14 +14,17 @@ const slackOk = {
   is_enterprise_install: false,
 }
 
-async function start() {
-  const session = (await login(h.app)).cookie
-  const res = await h.app.request('/oauth/slack/start', { headers: { cookie: session } })
+async function start(account?: Account) {
+  const me = account ?? (await signIn(h))
+  const res = await h.app.request('/oauth/slack/start', { headers: { cookie: me.cookie } })
   expect(res.status).toBe(302)
   const location = new URL(res.headers.get('location')!)
   const cookie = res.headers.get('set-cookie')!.split(';')[0]!
-  return { location, state: location.searchParams.get('state')!, cookie }
+  return { me, location, state: location.searchParams.get('state')!, cookie }
 }
+
+const members = (connectionId: string) =>
+  h.db.select().from(schema.connectionMembers).where(eq(schema.connectionMembers.connectionId, connectionId))
 
 const callback = (query: string, cookie?: string) =>
   h.app.request(`/oauth/slack/callback?${query}`, cookie ? { headers: { cookie } } : {})
@@ -36,11 +40,11 @@ describe('Slack OAuth', () => {
     expect(location.searchParams.get('redirect_uri')).toBe('http://relay.test/oauth/slack/callback')
   })
 
-  it('stores an encrypted token for a valid state', async () => {
+  it('stores an encrypted token for a valid state, owned by the user who started', async () => {
     h.fetch.mockResolvedValue(Response.json(slackOk))
-    const { state, cookie } = await start()
+    const { me, state, cookie } = await start()
     const res = await callback(`code=abc&state=${encodeURIComponent(state)}`, cookie)
-    expect(res.status).toBe(200)
+    expect(res.status).toBe(302)
 
     const [url, init] = h.fetch.mock.calls[0]!
     expect(url).toBe('https://slack.com/api/oauth.v2.access')
@@ -51,21 +55,52 @@ describe('Slack OAuth', () => {
 
     const conn = await h.connections.findSlack('T024BE7LD', 'U065VRX1T0')
     expect(conn?.status).toBe('active')
+    expect(res.headers.get('location')).toBe(`/#/c/${conn!.id}/routes`)
+    expect((await members(conn!.id)).map((m) => [m.userId, m.role])).toEqual([[me.userId, 'owner']])
     const [cred] = await h.db.select().from(schema.credentials)
     expect(cred?.ciphertext).not.toContain('xoxp')
     expect(await h.connections.getCredentials(conn!.id)).toEqual({ slack_user_token: 'xoxp-test-token' })
     expect(h.metrics.oauthCallbacks.get({ provider: 'slack', outcome: 'success' })).toBe(1)
   })
 
-  it('reactivates a revoked connection on reinstall', async () => {
-    const existing = await h.connections.upsertSlack({ teamId: 'T024BE7LD', userId: 'U065VRX1T0', accessToken: 'old' })
+  it('reactivates a revoked connection on reinstall by its owner', async () => {
+    const me = await signIn(h)
+    const existing = await h.connections.upsertSlack({ teamId: 'T024BE7LD', userId: 'U065VRX1T0', accessToken: 'old', ownerUserId: me.userId })
     await h.connections.revokeSlack('T024BE7LD', ['U065VRX1T0'])
     h.fetch.mockResolvedValue(Response.json(slackOk))
-    const { state, cookie } = await start()
-    await callback(`code=abc&state=${encodeURIComponent(state)}`, cookie)
+    const { state, cookie } = await start(me)
+    expect((await callback(`code=abc&state=${encodeURIComponent(state)}`, cookie)).status).toBe(302)
     const conn = await h.connections.findById(existing.id)
     expect(conn?.status).toBe('active')
     expect(await h.connections.getCredentials(existing.id)).toEqual({ slack_user_token: 'xoxp-test-token' })
+    expect(await members(existing.id)).toHaveLength(1)
+  })
+
+  it('refuses a Slack identity another account owns, and leaves its token alone', async () => {
+    const a = await signIn(h, 'a@example.com')
+    const owned = await h.connections.upsertSlack({ teamId: 'T024BE7LD', userId: 'U065VRX1T0', accessToken: 'xoxp-a', ownerUserId: a.userId })
+    const b = await signIn(h, 'b@example.com')
+    h.fetch.mockResolvedValue(Response.json(slackOk))
+    const { state, cookie } = await start(b)
+    const res = await callback(`code=abc&state=${encodeURIComponent(state)}`, cookie)
+    expect(res.status).toBe(409)
+    expect(await h.connections.getCredentials(owned.id)).toEqual({ slack_user_token: 'xoxp-a' })
+    expect((await members(owned.id)).map((m) => m.userId)).toEqual([a.userId])
+    expect(await h.db.select().from(schema.connections)).toHaveLength(1)
+    expect(h.metrics.oauthCallbacks.get({ provider: 'slack', outcome: 'owned_elsewhere' })).toBe(1)
+  })
+
+  it('rejects a state whose user id was swapped', async () => {
+    const a = await signIn(h, 'a@example.com')
+    const b = await signIn(h, 'b@example.com')
+    h.fetch.mockResolvedValue(Response.json(slackOk))
+    const { state, cookie } = await start(a)
+    const [nonce, , expires, mac] = state.split('.')
+    const swapped = [nonce, b.userId, expires, mac].join('.')
+    const res = await callback(`code=abc&state=${encodeURIComponent(swapped)}`, cookie)
+    expect(res.status).toBe(400)
+    expect(h.fetch).not.toHaveBeenCalled()
+    expect(await h.db.select().from(schema.connections)).toHaveLength(0)
   })
 
   it.each([
@@ -82,8 +117,9 @@ describe('Slack OAuth', () => {
   })
 
   it('rejects a state bound to another browser', async () => {
-    const a = await start()
-    const b = await start()
+    const me = await signIn(h)
+    const a = await start(me)
+    const b = await start(me)
     const res = await callback(`code=abc&state=${encodeURIComponent(a.state)}`, b.cookie)
     expect(res.status).toBe(400)
   })

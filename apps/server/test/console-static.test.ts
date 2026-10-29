@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { INDEX_HTML, login, useHarness } from './harness'
+import { INDEX_HTML, signIn, useHarness } from './harness'
 
 const h = useHarness()
 
@@ -27,7 +27,7 @@ describe('console static serving', () => {
   })
 
   it('returns JSON 404s for /api, not the SPA', async () => {
-    const { cookie } = await login(h.app)
+    const { cookie } = await signIn(h)
     const res = await h.app.request('/api/unknown', { headers: { cookie } })
     expect(res.status).toBe(404)
     expect(res.headers.get('content-type')).toContain('application/json')

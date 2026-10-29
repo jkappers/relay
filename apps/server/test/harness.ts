@@ -16,12 +16,14 @@ import { resetDb, startSlackStub, TEST_DATABASE_URL, TEST_MASTER_KEY, type Slack
 import { computeSlackSignature } from '@relay/provider-slack'
 import { computeWebhookSignature } from '@relay/provider-webhook'
 import { afterAll, beforeAll, beforeEach, vi } from 'vitest'
+import { scryptHasher } from '../src/accounts/password'
+import { createUser } from '../src/accounts/users'
 import { createApp } from '../src/app'
 import { createServerMetrics, type ServerMetrics } from '../src/metrics'
 
 export const SIGNING_SECRET = 'test-signing-secret'
 export const PUBLIC_URL = 'http://relay.test'
-export const CONSOLE_PASSWORD = 'correct horse battery staple'
+export const PASSWORD = 'correct horse battery staple'
 export const CSRF = { 'x-relay-console': '1' }
 export const INDEX_HTML = '<!doctype html><title>console</title><div id="root"></div><script type="module" src="/assets/app.js"></script>'
 
@@ -71,7 +73,7 @@ export function useHarness(): Harness {
         SLACK_CLIENT_SECRET: 'client-secret',
         SLACK_ALLOWED_USER_IDS: ['U065VRX1T0'],
         RELAY_MASTER_KEY: TEST_MASTER_KEY,
-        CONSOLE_PASSWORD,
+        SIGNUP_MODE: 'closed',
         SLACK_API_BASE_URL: h.slack.url,
       },
       db: h.db,
@@ -136,11 +138,11 @@ export async function routeJobCount(db: Db, eventId: string): Promise<number> {
   return rows[0]?.n ?? 0
 }
 
-export async function login(app: Harness['app'], password = CONSOLE_PASSWORD) {
+export async function login(app: Harness['app'], email: string, password = PASSWORD) {
   const res = await app.request('/api/session', {
     method: 'POST',
     headers: { 'content-type': 'application/json', ...CSRF },
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ email, password }),
   })
   const cookie = res.headers.get('set-cookie')?.split(';')[0] ?? ''
   return { res, cookie }
@@ -157,4 +159,19 @@ export function apiAs(app: Harness['app'], cookie: string): Api {
       headers: { cookie, ...CSRF, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
+}
+
+export interface Account {
+  userId: string
+  email: string
+  cookie: string
+  api: Api
+}
+
+/** Creates a user, signs in through the API, and returns a client for that session. */
+export async function signIn(h: Harness, email = 'owner@example.com'): Promise<Account> {
+  const user = await createUser(h.db, scryptHasher, { email, password: PASSWORD })
+  const { res, cookie } = await login(h.app, email)
+  if (res.status !== 204) throw new Error(`login failed: ${res.status}`)
+  return { userId: user.id, email, cookie, api: apiAs(h.app, cookie) }
 }

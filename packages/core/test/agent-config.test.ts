@@ -34,13 +34,16 @@ describe('agent config', () => {
     expect(agentConfigSchema.safeParse({ systemPrompt: 'x', maxMutatingActions: -1 }).success).toBe(false)
   })
 
+  const connection = async () => (await db.insert(schema.connections).values({ provider: 'webhook' }).returning())[0]!.id
+
   it('stores an agent destination without a url or secret', async () => {
-    const d = await createAgentDestination(db, { name: 'a', config: { systemPrompt: 'x', maxTurns: 2 } })
+    const d = await createAgentDestination(db, await connection(), { name: 'a', config: { systemPrompt: 'x', maxTurns: 2 } })
     expect(d).toMatchObject({ kind: 'agent', url: null, secretCiphertext: null, config: { systemPrompt: 'x', maxTurns: 2, model: 'claude-sonnet-5-5' } })
   })
 
   it('the database refuses an http destination without url and secret', async () => {
-    await expect(db.insert(schema.destinations).values({ name: 'bad', kind: 'http' })).rejects.toThrow()
-    await expect(db.insert(schema.destinations).values({ name: 'bad', kind: 'http', url: 'http://x.test' })).rejects.toThrow()
+    const connectionId = await connection()
+    await expect(db.insert(schema.destinations).values({ connectionId, name: 'bad', kind: 'http' })).rejects.toThrow()
+    await expect(db.insert(schema.destinations).values({ connectionId, name: 'bad', kind: 'http', url: 'http://x.test' })).rejects.toThrow()
   })
 })

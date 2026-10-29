@@ -6,7 +6,7 @@ import { routeJobCount, slackFixture, slackRequest, useHarness } from './harness
 const h = useHarness()
 
 async function connectFixtureUser(teamId = 'T123ABC456', userId = 'U2147483697') {
-  return h.connections.upsertSlack({ teamId, userId, accessToken: 'xoxp-test' })
+  return h.connections.upsertSlack({ teamId, userId, accessToken: 'xoxp-test', ownerUserId: null })
 }
 
 const outcome = (o: string) => h.metrics.ingressRequests.get({ provider: 'slack', outcome: o })

@@ -8,7 +8,7 @@ const h = useHarness()
 describe('router', () => {
   it('creates one delivery per destination and enqueues a dispatch job for each', async () => {
     const a = await setup(h, { url: 'http://127.0.0.1:1/a' })
-    const b = await setup(h, { url: 'http://127.0.0.1:1/b' })
+    const b = await setup(h, { url: 'http://127.0.0.1:1/b' }, a.connection)
     const route = await makeRoute(h, { destinationIds: [a.destination.id, b.destination.id] })
     const event = await insertEvent(h, a.connection.id)
 
@@ -78,5 +78,30 @@ describe('router', () => {
     const event = await insertEvent(h, a.connection.id)
     await h.router({ eventId: event.id })
     expect(await h.db.select().from(schema.deliveries)).toHaveLength(0)
+  })
+
+  it('only matches routes of the event connection', async () => {
+    const x = await setup(h, { url: 'http://127.0.0.1:1/x' })
+    const y = await setup(h, { url: 'http://127.0.0.1:1/y' })
+    await makeRoute(h, { eventType: '*', destinationIds: [y.destination.id] })
+    const event = await insertEvent(h, x.connection.id)
+    await h.router({ eventId: event.id })
+    expect(await h.db.select().from(schema.deliveries)).toHaveLength(0)
+    expect(h.metrics.routerEvents.get({ outcome: 'unmatched' })).toBe(1)
+  })
+
+  it('skips a hand-inserted link to a destination in another connection', async () => {
+    const x = await setup(h, { url: 'http://127.0.0.1:1/x' })
+    const y = await setup(h, { url: 'http://127.0.0.1:1/y' })
+    const route = await makeRoute(h, { eventType: '*', destinationIds: [x.destination.id] })
+    await h.db.insert(schema.routeDestinations).values({ routeId: route.id, destinationId: y.destination.id })
+    const event = await insertEvent(h, x.connection.id)
+
+    await h.router({ eventId: event.id })
+
+    const rows = await h.db.select().from(schema.deliveries)
+    expect(rows.map((r) => r.destinationId)).toEqual([x.destination.id])
+    expect(await dispatchJobs(h)).toHaveLength(1)
+    expect(h.metrics.crossTenantBlocked.get({ stage: 'router' })).toBe(1)
   })
 })

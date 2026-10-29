@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto'
-import { replayDelivery, QUEUES, type DispatchJob } from '@relay/core'
+import { replayDelivery, QUEUES, schema, type DispatchJob } from '@relay/core'
 import { describe, expect, it } from 'vitest'
 import { createDispatcher } from '../src/dispatcher'
 import {
@@ -189,7 +189,7 @@ describe('dispatcher', () => {
     await s.run()
     expect((await s.get()).status).toBe('failed')
 
-    await replayDelivery(h.db, h.queue, s.delivery.id)
+    await replayDelivery(h.db, h.queue, s.event.envelope.connectionId, s.delivery.id)
     let row = await s.get()
     expect(row).toMatchObject({ status: 'pending', attempts: 0, lastError: null, lastStatusCode: null, completedAt: null })
     expect(await dispatchJobs(h)).toHaveLength(1)
@@ -203,7 +203,7 @@ describe('dispatcher', () => {
 
   it('refuses to replay a delivery that is not failed', async () => {
     const s = await scenario(respond(200))
-    await expect(replayDelivery(h.db, h.queue, s.delivery.id)).rejects.toThrow(/not in failed/)
+    await expect(replayDelivery(h.db, h.queue, s.event.envelope.connectionId, s.delivery.id)).rejects.toThrow(/not in failed/)
     await s.receiver.close()
   })
 
@@ -220,6 +220,30 @@ describe('dispatcher', () => {
     await expect.poll(async () => (await s.get()).status, { timeout: 15_000, interval: 200 }).toBe('succeeded')
     expect((await s.get()).attempts).toBe(3)
     await s.receiver.close()
+  })
+})
+
+describe('cross-tenant guard', () => {
+  it('fails a replayed delivery that pairs one connection event with another connection destination', async () => {
+    const receiver = await startReceiver(respond(200, { ok: true }))
+    const x = await setup(h, { url: 'http://127.0.0.1:1/x' })
+    const y = await setup(h, { url: receiver.url, allowedActions: null })
+    const yRoute = await makeRoute(h, { eventType: '*', destinationIds: [y.destination.id] })
+    const event = await insertEvent(h, x.connection.id)
+    const [old] = await h.db
+      .insert(schema.deliveries)
+      .values({ eventId: event.id, routeId: yRoute.id, destinationId: y.destination.id, status: 'failed', attempts: 8 })
+      .returning()
+
+    await replayDelivery(h.db, h.queue, x.connection.id, old!.id)
+    await h.dispatcher({ deliveryId: old!.id })
+
+    const row = await getDelivery(h, old!.id)
+    expect(row).toMatchObject({ status: 'failed', lastError: 'cross_tenant', attempts: 0, lastReplyJti: null })
+    expect(receiver.requests).toHaveLength(0)
+    expect(h.metrics.crossTenantBlocked.get({ stage: 'dispatch' })).toBe(1)
+    expect(h.metrics.deliveryAttempts.get({ outcome: 'success' })).toBe(0)
+    await receiver.close()
   })
 })
 

@@ -4,7 +4,7 @@ import { computeBackoffMs, matchRoute, parseRetryAfterMs, validateRegex, type Ro
 const CONN = '11111111-1111-4111-8111-111111111111'
 const route = (o: Partial<RouteMatchFields> = {}): RouteMatchFields => ({
   enabled: true,
-  connectionId: null,
+  connectionId: CONN,
   eventType: 'slack.message.im',
   textContains: null,
   textRegex: null,

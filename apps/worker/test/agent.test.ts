@@ -351,5 +351,32 @@ describe('sweeper and agent deliveries', () => {
     expect(await dispatchJobs(h)).toHaveLength(1)
     expect(await agentJobs(h)).toHaveLength(0)
   })
-})
 
+  it('refuses to run an agent destination from another connection, before any token or call', async () => {
+    const x = await agentSetup(h)
+    const { connection: other } = await h.connections.createWebhook({ ownerUserId: null })
+    await h.db.update(schema.destinations).set({ connectionId: other.id }).where(eq(schema.destinations.id, x.destination.id))
+    let ran = false
+    const runner = createFakeRunner(async () => {
+      ran = true
+    })
+
+    await h.agent(runner)({ deliveryId: x.delivery.id })
+
+    expect(ran).toBe(false)
+    expect(await agentRunFor(h, x.delivery.id)).toBeUndefined()
+    expect(await getDelivery(h, x.delivery.id)).toMatchObject({ status: 'failed', lastError: 'cross_tenant', lastReplyJti: null })
+    expect(h.slack.requests).toHaveLength(0)
+    expect(h.metrics.crossTenantBlocked.get({ stage: 'agent' })).toBe(1)
+  })
+
+  it('the dispatcher fails a cross-connection agent delivery without queueing an agent job', async () => {
+    const x = await agentSetup(h)
+    const { connection: other } = await h.connections.createWebhook({ ownerUserId: null })
+    await h.db.update(schema.destinations).set({ connectionId: other.id }).where(eq(schema.destinations.id, x.destination.id))
+    await h.dispatcher({ deliveryId: x.delivery.id })
+    expect(await agentJobs(h)).toHaveLength(0)
+    expect(await getDelivery(h, x.delivery.id)).toMatchObject({ status: 'failed', lastError: 'cross_tenant' })
+    expect(h.metrics.crossTenantBlocked.get({ stage: 'dispatch' })).toBe(1)
+  })
+})

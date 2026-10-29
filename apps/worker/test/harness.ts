@@ -139,14 +139,17 @@ export async function insertEvent(
   return { id, envelope }
 }
 
-export async function setup(h: Harness, dest: Partial<CreateDestinationInput> & { url: string }) {
-  const { connection } = await h.connections.createWebhook()
-  const { destination, secret } = await createDestination(h.db, h.cipher, { name: 'dest', ...dest })
+export async function setup(h: Harness, dest: Partial<CreateDestinationInput> & { url: string }, existing?: { id: string }) {
+  const connection = existing ?? (await h.connections.createWebhook({ ownerUserId: null })).connection
+  const { destination, secret } = await createDestination(h.db, h.cipher, connection.id, { name: 'dest', ...dest })
   return { connection, destination, secret }
 }
 
-export async function makeRoute(h: Harness, input: Partial<CreateRouteInput> & { destinationIds: string[] }) {
-  return createRoute(h.db, { name: 'route', eventType: 'webhook.*', ...input })
+/** Puts the route in the first destination's connection unless `connectionId` is given. */
+export async function makeRoute(h: Harness, input: Partial<CreateRouteInput> & { destinationIds: string[]; connectionId?: string }) {
+  const { connectionId, ...rest } = input
+  const [first] = await h.db.select().from(schema.destinations).where(sql`${schema.destinations.id} = ${input.destinationIds[0]!}`)
+  return createRoute(h.db, connectionId ?? first!.connectionId, { name: 'route', eventType: 'webhook.*', ...rest })
 }
 
 export async function makeDelivery(h: Harness, eventId: string, routeId: string, destinationId: string) {
@@ -226,13 +229,13 @@ export async function slackSetup(
   h: Harness,
   opts: { allowedActions?: string[] | null; envelope?: Partial<Envelope>; url?: string } = {},
 ) {
-  const connection = await h.connections.upsertSlack({ teamId: 'T123ABC456', userId: SLACK_USER, accessToken: 'xoxp-test-token' })
-  const { destination, secret } = await createDestination(h.db, h.cipher, {
+  const connection = await h.connections.upsertSlack({ teamId: 'T123ABC456', userId: SLACK_USER, accessToken: 'xoxp-test-token', ownerUserId: null })
+  const { destination, secret } = await createDestination(h.db, h.cipher, connection.id, {
     name: 'slack-dest',
     url: opts.url ?? 'http://127.0.0.1:1/hook',
     allowedActions: opts.allowedActions ?? null,
   })
-  const route = await createRoute(h.db, { name: 'r', eventType: 'slack.*', destinationIds: [destination.id] })
+  const route = await createRoute(h.db, connection.id, { name: 'r', eventType: 'slack.*', destinationIds: [destination.id] })
   const event = await insertEvent(h, connection.id, {
     provider: 'slack',
     type: 'slack.message.im',
@@ -249,13 +252,13 @@ export async function agentSetup(
   h: Harness,
   opts: { config?: Partial<AgentConfigInput>; allowedActions?: string[] | null; envelope?: Partial<Envelope> } = {},
 ) {
-  const connection = await h.connections.upsertSlack({ teamId: 'T123ABC456', userId: SLACK_USER, accessToken: 'xoxp-test-token' })
-  const destination = await createAgentDestination(h.db, {
+  const connection = await h.connections.upsertSlack({ teamId: 'T123ABC456', userId: SLACK_USER, accessToken: 'xoxp-test-token', ownerUserId: null })
+  const destination = await createAgentDestination(h.db, connection.id, {
     name: 'agent-dest',
     config: { systemPrompt: 'Be brief.', ...opts.config },
     allowedActions: opts.allowedActions ?? null,
   })
-  const route = await createRoute(h.db, { name: 'r', eventType: 'slack.*', destinationIds: [destination.id] })
+  const route = await createRoute(h.db, connection.id, { name: 'r', eventType: 'slack.*', destinationIds: [destination.id] })
   const event = await insertEvent(h, connection.id, {
     provider: 'slack',
     type: 'slack.message.im',

@@ -2,20 +2,33 @@ import { randomUUID } from 'node:crypto'
 import { eq, sql } from 'drizzle-orm'
 import { QUEUES, schema, type Envelope } from '@relay/core'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { apiAs, login, useHarness, type Api } from './harness'
+import { signIn, useHarness, type Account, type Api } from './harness'
 
 const h = useHarness()
+let me: Account
+let conn: string
+/** Calls `/api/x` as `/api/c/<conn>/x`. */
 let api: Api
+const tenantApi = (connectionId: string): Api => (method, path, body) => me.api(method, path.replace(/^\/api\//, `/api/c/${connectionId}/`), body)
 
 beforeEach(async () => {
-  api = apiAs(h.app, (await login(h.app)).cookie)
+  me = await signIn(h)
+  conn = await seedConnection()
+  api = tenantApi(conn)
 })
 
+/** Session lookup and tenant membership run before every tenant handler. */
+const AUTH_QUERIES = 2
 const json = async (res: Response | Promise<Response>) => (await res).json() as Promise<any>
 
 async function seedConnection() {
-  const { connection } = await h.connections.createWebhook()
+  const { connection } = await h.connections.createWebhook({ ownerUserId: me.userId })
   return connection.id
+}
+
+async function seedSlackConnection() {
+  const c = await h.connections.upsertSlack({ teamId: 'T1', userId: 'U1', accessToken: 'xoxp', ownerUserId: me.userId })
+  return c
 }
 
 async function seedEvent(connectionId: string, over: Partial<Envelope> & { receivedAt?: Date; routed?: boolean } = {}) {
@@ -59,32 +72,32 @@ const jobCount = async (name: string, key: string) => {
 }
 
 describe('connections', () => {
-  it('creates a webhook connection and shows the secret once', async () => {
-    const res = await api('POST', '/api/connections/webhook')
+  it('creates a webhook connection owned by the caller and shows the secret once', async () => {
+    const res = await me.api('POST', '/api/connections/webhook', { name: 'Deploys' })
     expect(res.status).toBe(201)
     const created = await json(res)
+    expect(created.name).toBe('Deploys')
     expect(created.url).toBe(`http://relay.test/hooks/webhook/${created.id}`)
     expect(created.secret).toMatch(/^[0-9a-f]{64}$/)
     expect(await h.connections.getWebhookSecret(created.id)).toBe(created.secret)
 
-    const text = await (await api('GET', '/api/connections')).text()
+    const text = await (await me.api('GET', '/api/connections')).text()
     expect(text).not.toContain(created.secret)
     expect(text).not.toMatch(/secret|ciphertext|token/i)
     const list = JSON.parse(text)
-    expect(list.items).toHaveLength(1)
-    expect(list.items[0]).toMatchObject({ id: created.id, provider: 'webhook', status: 'active' })
+    expect(list.items.map((c: any) => c.id)).toEqual([conn, created.id])
+    expect(list.items[1]).toMatchObject({ id: created.id, provider: 'webhook', status: 'active', role: 'owner' })
   })
 
   it('revokes a connection', async () => {
-    const id = await seedConnection()
-    expect((await api('POST', `/api/connections/${id}/revoke`)).status).toBe(204)
-    expect((await h.connections.findById(id))?.status).toBe('revoked')
-    expect((await api('POST', `/api/connections/${randomUUID()}/revoke`)).status).toBe(404)
+    expect((await api('POST', '/api/revoke')).status).toBe(204)
+    expect((await h.connections.findById(conn))?.status).toBe('revoked')
+    expect((await tenantApi(randomUUID())('POST', '/api/revoke')).status).toBe(404)
     expect(h.metrics.consoleMutations.get({ resource: 'connection', action: 'revoke' })).toBe(1)
   })
 
   it('returns the Slack connect URL', async () => {
-    expect(await json(api('GET', '/api/connections/slack-url'))).toEqual({ url: 'http://relay.test/oauth/slack/start' })
+    expect(await json(me.api('GET', '/api/connections/slack-url'))).toEqual({ url: 'http://relay.test/oauth/slack/start' })
   })
 })
 
@@ -167,7 +180,6 @@ describe('routes', () => {
   it('runs CRUD, relinking destinations and toggling', async () => {
     const d1 = await seedDestination()
     const d2 = await seedDestination()
-    const conn = await seedConnection()
     const res = await api('POST', '/api/routes', { name: 'r', eventType: 'slack.message.*', destinationIds: [d1], textContains: 'hi' })
     expect(res.status).toBe(201)
     const route = await json(res)
@@ -178,7 +190,6 @@ describe('routes', () => {
         name: 'r2',
         eventType: 'x',
         destinationIds: [d2],
-        connectionId: conn,
         textRegex: '^a+$',
         includeSubtypes: true,
         enabled: false,
@@ -205,12 +216,10 @@ describe('routes', () => {
     expect(long.status).toBe(400)
     expect((await api('POST', '/api/routes', { name: 'r', eventType: 'x', destinationIds: [] })).status).toBe(400)
     expect((await api('POST', '/api/routes', { name: 'r', eventType: 'x', destinationIds: [randomUUID()] })).status).toBe(400)
-    expect((await api('POST', '/api/routes', { name: 'r', eventType: 'x', destinationIds: [d], connectionId: randomUUID() })).status).toBe(400)
     expect((await api('PUT', `/api/routes/${randomUUID()}`, { name: 'r', eventType: 'x', destinationIds: [d] })).status).toBe(404)
   })
 
   it('previews matches against the last 50 events', async () => {
-    const conn = await seedConnection()
     const hit = await seedEvent(conn, { text: 'Deploy FAILED now', type: 'slack.message.channel' })
     await seedEvent(conn, { text: 'all good', type: 'slack.message.channel' })
     await seedEvent(conn, { text: 'deploy failed', type: 'slack.reaction' })
@@ -233,7 +242,6 @@ describe('routes', () => {
 
 describe('events', () => {
   it('paginates newest first with a stable keyset cursor, including ties', async () => {
-    const conn = await seedConnection()
     const t = new Date('2026-01-01T00:00:00.000Z')
     const ids: string[] = []
     for (let i = 0; i < 7; i++) ids.push(await seedEvent(conn, { text: `e${i}`, receivedAt: new Date(t.getTime() + Math.floor(i / 2) * 1000) }))
@@ -257,26 +265,26 @@ describe('events', () => {
     expect((await api('GET', '/api/events?cursor=garbage')).status).toBe(400)
   })
 
-  it('filters by provider, connection, type prefix and since', async () => {
-    const c1 = await seedConnection()
-    const c2 = await seedConnection()
-    const old = await seedEvent(c1, { type: 'slack.message.im', provider: 'slack', receivedAt: new Date('2020-01-01T00:00:00Z') })
-    const a = await seedEvent(c1, { type: 'slack.message.channel', provider: 'slack' })
-    const b = await seedEvent(c2, { type: 'webhook.received' })
-    const ids = async (q: string) => (await json(api('GET', `/api/events?${q}`))).items.map((e: any) => e.id).sort()
+  it('filters by provider, type prefix and since, inside the path connection only', async () => {
+    const other = await seedConnection()
+    const old = await seedEvent(conn, { type: 'slack.message.im', provider: 'slack', receivedAt: new Date('2020-01-01T00:00:00Z') })
+    const a = await seedEvent(conn, { type: 'slack.message.channel', provider: 'slack' })
+    const b = await seedEvent(conn, { type: 'webhook.received' })
+    const elsewhere = await seedEvent(other, { type: 'webhook.received' })
+    const ids = async (q: string, path = api) => (await json(path('GET', `/api/events?${q}`))).items.map((e: any) => e.id).sort()
 
+    expect(await ids('')).toEqual([old, a, b].sort())
     expect(await ids('provider=slack')).toEqual([old, a].sort())
-    expect(await ids(`connectionId=${c2}`)).toEqual([b])
+    expect(await ids(`connectionId=${other}`)).toEqual([old, a, b].sort())
+    expect(await ids('', tenantApi(other))).toEqual([elsewhere])
     expect(await ids('type=slack.message.')).toEqual([old, a].sort())
     expect(await ids('type=slack.message.im')).toEqual([old])
     expect(await ids('type=100%25')).toEqual([])
     expect(await ids('since=2021-01-01T00:00:00Z')).toEqual([a, b].sort())
     expect((await api('GET', '/api/events?since=yesterday')).status).toBe(400)
-    expect((await api('GET', '/api/events?connectionId=x')).status).toBe(400)
   })
 
   it('returns detail with deliveries, actions and agent runs', async () => {
-    const conn = await seedConnection()
     const eventId = await seedEvent(conn, { routed: true })
     const dest = await seedDestination()
     const route = await json(api('POST', '/api/routes', { name: 'r', eventType: '*', destinationIds: [dest] }))
@@ -307,13 +315,13 @@ describe('events', () => {
   })
 
   it('reports unrouted, unmatched and echo states', async () => {
-    const conn = await seedConnection()
     const pending = await seedEvent(conn)
     const unmatched = await seedEvent(conn, { routed: true })
     expect((await json(api('GET', `/api/events/${pending}`))).state).toBe('pending')
     expect((await json(api('GET', `/api/events/${unmatched}`))).state).toBe('unmatched')
 
-    const slackConn = await h.connections.upsertSlack({ teamId: 'T1', userId: 'U1', accessToken: 'xoxp' })
+    const slackConn = await seedSlackConnection()
+    const slackApi = tenantApi(slackConn.id)
     const echo = await seedEvent(slackConn.id, {
       provider: 'slack',
       type: 'slack.message.im',
@@ -322,16 +330,15 @@ describe('events', () => {
       routed: true,
     })
     await h.db.insert(schema.sentMessages).values({ connectionId: slackConn.id, channel: 'D1', ts: '1.2' })
-    const d = await json(api('GET', `/api/events/${echo}`))
+    const d = await json(slackApi('GET', `/api/events/${echo}`))
     expect(d.echo).toBe(true)
     expect(d.state).toBe('skipped_echo')
 
     await h.connections.revokeSlack('T1', ['U1'])
-    expect((await json(api('GET', `/api/events/${echo}`))).state).toBe('skipped_inactive')
+    expect((await json(slackApi('GET', `/api/events/${echo}`))).state).toBe('skipped_inactive')
   })
 
   it('summarizes each event trace in the list', async () => {
-    const conn = await seedConnection()
     const dest = await seedDestination()
     const dest2 = await seedDestination()
     const route = await json(api('POST', '/api/routes', { name: 'r', eventType: '*', destinationIds: [dest, dest2] }))
@@ -352,7 +359,7 @@ describe('events', () => {
     await deliver(failed, 'pending')
     const bad = await deliver(failed, 'failed', dest2, 'HTTP 500')
 
-    const slackConn = await h.connections.upsertSlack({ teamId: 'T1', userId: 'U1', accessToken: 'xoxp' })
+    const slackConn = await seedSlackConnection()
     const echo = await seedEvent(slackConn.id, {
       provider: 'slack',
       type: 'slack.message.im',
@@ -362,9 +369,13 @@ describe('events', () => {
     await h.db.insert(schema.sentMessages).values({ connectionId: slackConn.id, channel: 'D1', ts: '1.2' })
     const revokedConn = await seedConnection()
     const inactive = await seedEvent(revokedConn, { routed: true })
-    await api('POST', `/api/connections/${revokedConn}/revoke`)
+    await tenantApi(revokedConn)('POST', '/api/revoke')
 
-    const items = (await json(api('GET', '/api/events'))).items as any[]
+    const items = [
+      ...(await json(api('GET', '/api/events'))).items,
+      ...(await json(tenantApi(slackConn.id)('GET', '/api/events'))).items,
+      ...(await json(tenantApi(revokedConn)('GET', '/api/events'))).items,
+    ] as any[]
     const trace = (id: string) => items.find((e) => e.id === id).trace
     const none = { pending: 0, succeeded: 0, failed: 0 }
 
@@ -387,7 +398,6 @@ describe('events', () => {
   })
 
   it('filters by outcome facet, each event in exactly one facet', async () => {
-    const conn = await seedConnection()
     const dest = await seedDestination()
     const dest2 = await seedDestination()
     const route = await json(api('POST', '/api/routes', { name: 'r', eventType: '*', destinationIds: [dest, dest2] }))
@@ -409,7 +419,8 @@ describe('events', () => {
     const retrying = await seedEvent(conn, { routed: true })
     await deliver(retrying, 'pending')
 
-    const slackConn = await h.connections.upsertSlack({ teamId: 'T1', userId: 'U1', accessToken: 'xoxp' })
+    const slackConn = await seedSlackConnection()
+    const slackApi = tenantApi(slackConn.id)
     const echo = await seedEvent(slackConn.id, {
       provider: 'slack',
       type: 'slack.message.im',
@@ -418,31 +429,32 @@ describe('events', () => {
     })
     await h.db.insert(schema.sentMessages).values({ connectionId: slackConn.id, channel: 'D1', ts: '1.2' })
     const revokedConn = await seedConnection()
+    const revokedApi = tenantApi(revokedConn)
     const inactive = await seedEvent(revokedConn, { routed: true })
-    await api('POST', `/api/connections/${revokedConn}/revoke`)
+    await revokedApi('POST', '/api/revoke')
 
-    const ids = async (q: string) => (await json(api('GET', `/api/events?${q}`))).items.map((e: any) => e.id).sort()
+    const ids = async (q: string, path = api) => (await json(path('GET', `/api/events?${q}`))).items.map((e: any) => e.id).sort()
     const facets = {
       failed: [failedDelivery, failedAction],
       pending: [unroutedYet, retrying],
-      unrouted: [unmatched, inactive],
-      echo: [echo],
+      unrouted: [unmatched],
+      echo: [],
       ok: [ok],
     }
     for (const [outcome, expected] of Object.entries(facets)) expect(await ids(`outcome=${outcome}`)).toEqual([...expected].sort())
     expect((await ids('')).length).toBe(Object.values(facets).flat().length)
-    expect(await ids(`outcome=failed&connectionId=${conn}`)).toEqual([failedDelivery, failedAction].sort())
+    expect(await ids('outcome=echo', slackApi)).toEqual([echo])
+    expect(await ids('outcome=unrouted', revokedApi)).toEqual([inactive])
     expect((await api('GET', '/api/events?outcome=broken')).status).toBe(400)
 
-    const counts = await json(api('GET', '/api/events/facets'))
-    expect(counts).toEqual({ all: 8, failed: 2, pending: 2, unrouted: 2, echo: 1, ok: 1 })
-    expect(await json(api('GET', `/api/events/facets?connectionId=${conn}`))).toEqual({ all: 6, failed: 2, pending: 2, unrouted: 1, echo: 0, ok: 1 })
-    expect(await json(api('GET', '/api/events/facets?provider=slack'))).toEqual({ all: 1, failed: 0, pending: 0, unrouted: 0, echo: 1, ok: 0 })
+    expect(await json(api('GET', '/api/events/facets'))).toEqual({ all: 6, failed: 2, pending: 2, unrouted: 1, echo: 0, ok: 1 })
+    expect(await json(api('GET', `/api/events/facets?connectionId=${slackConn.id}`))).toEqual({ all: 6, failed: 2, pending: 2, unrouted: 1, echo: 0, ok: 1 })
+    expect(await json(slackApi('GET', '/api/events/facets?provider=slack'))).toEqual({ all: 1, failed: 0, pending: 0, unrouted: 0, echo: 1, ok: 0 })
+    expect(await json(revokedApi('GET', '/api/events/facets'))).toEqual({ all: 1, failed: 0, pending: 0, unrouted: 1, echo: 0, ok: 0 })
     expect((await api('GET', '/api/events/facets?since=nope')).status).toBe(400)
   })
 
   it('keeps keyset pagination correct under an outcome filter', async () => {
-    const conn = await seedConnection()
     const dest = await seedDestination()
     const route = await json(api('POST', '/api/routes', { name: 'r', eventType: '*', destinationIds: [dest] }))
     const t = new Date('2026-01-01T00:00:00.000Z')
@@ -473,14 +485,13 @@ describe('events', () => {
     const spy = vi.spyOn(client, 'unsafe')
     try {
       await api('GET', '/api/events?outcome=ok')
-      expect(spy.mock.calls.length).toBe(1)
+      expect(spy.mock.calls.length).toBe(1 + AUTH_QUERIES)
     } finally {
       spy.mockRestore()
     }
   })
 
   it('builds the event list page in one query', async () => {
-    const conn = await seedConnection()
     const dest = await seedDestination()
     const route = await json(api('POST', '/api/routes', { name: 'r', eventType: '*', destinationIds: [dest] }))
     const countFor = async (n: number) => {
@@ -505,12 +516,11 @@ describe('events', () => {
     }
     const one = await countFor(1)
     const many = await countFor(12)
-    expect(one).toBe(1)
-    expect(many).toBe(1)
+    expect(one).toBe(1 + AUTH_QUERIES)
+    expect(many).toBe(1 + AUTH_QUERIES)
   })
 
   it('replays an event with a singleton key', async () => {
-    const conn = await seedConnection()
     const id = await seedEvent(conn)
     const res = await api('POST', `/api/events/${id}/replay`)
     expect(res.status).toBe(202)
@@ -523,7 +533,6 @@ describe('events', () => {
 
 describe('deliveries and tokens', () => {
   async function seedDelivery(status: 'pending' | 'failed' | 'succeeded') {
-    const conn = await seedConnection()
     const eventId = await seedEvent(conn)
     const dest = await seedDestination()
     const route = await json(api('POST', '/api/routes', { name: 'r', eventType: '*', destinationIds: [dest] }))
@@ -553,10 +562,10 @@ describe('deliveries and tokens', () => {
   })
 
   it('revokes a reply token by jti', async () => {
-    expect((await api('POST', '/api/tokens/revoke', { jti: 'abc-123' })).status).toBe(204)
+    expect((await me.api('POST', '/api/tokens/revoke', { jti: 'abc-123' })).status).toBe(204)
     const rows = await h.db.select().from(schema.revokedTokens)
     expect(rows.map((r) => r.jti)).toEqual(['abc-123'])
-    expect((await api('POST', '/api/tokens/revoke', {})).status).toBe(400)
+    expect((await me.api('POST', '/api/tokens/revoke', {})).status).toBe(400)
   })
 })
 
@@ -565,7 +574,6 @@ describe('overview', () => {
     const empty = await json(api('GET', '/api/overview'))
     expect(empty).toMatchObject({ events: 0, deliveries: { pending: 0, succeeded: 0, failed: 0 }, failedActions: 0, agentRuns: 0 })
 
-    const conn = await seedConnection()
     const eventId = await seedEvent(conn)
     await seedEvent(conn, { receivedAt: new Date(Date.now() - 48 * 3600_000) })
     const dest = await seedDestination()

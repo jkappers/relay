@@ -9,10 +9,10 @@ const key = deriveReplyTokenKey(TEST_MASTER_KEY)
 const now = () => Math.floor(Date.now() / 1000)
 
 async function setupDelivery(allowedActions: string[] | null = null) {
-  const connection = await h.connections.upsertSlack({ teamId: 'T1', userId: 'U1', accessToken: 'xoxp-secret-token' })
+  const connection = await h.connections.upsertSlack({ teamId: 'T1', userId: 'U1', accessToken: 'xoxp-secret-token', ownerUserId: null })
   const cipher = await createCipher(TEST_MASTER_KEY)
-  const { destination } = await createDestination(h.db, cipher, { name: 'd', url: 'http://127.0.0.1:1/x', allowedActions })
-  const route = await createRoute(h.db, { name: 'r', eventType: 'slack.*', destinationIds: [destination.id] })
+  const { destination } = await createDestination(h.db, cipher, connection.id, { name: 'd', url: 'http://127.0.0.1:1/x', allowedActions })
+  const route = await createRoute(h.db, connection.id, { name: 'r', eventType: 'slack.*', destinationIds: [destination.id] })
   const eventId = crypto.randomUUID()
   await h.db.insert(schema.events).values({
     id: eventId,

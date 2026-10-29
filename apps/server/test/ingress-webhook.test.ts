@@ -7,7 +7,7 @@ const outcome = (o: string) => h.metrics.ingressRequests.get({ provider: 'webhoo
 
 describe('POST /hooks/webhook/:connectionId', () => {
   it('accepts a signed event and normalizes its type', async () => {
-    const { connection, secret } = await h.connections.createWebhook()
+    const { connection, secret } = await h.connections.createWebhook({ ownerUserId: null })
     const res = await webhookRequest(h.app, connection.id, secret, JSON.stringify({ type: 'deploy.finished', text: 'hi' }))
     expect(res.status).toBe(200)
 
@@ -19,14 +19,14 @@ describe('POST /hooks/webhook/:connectionId', () => {
   })
 
   it('defaults the type to webhook.event', async () => {
-    const { connection, secret } = await h.connections.createWebhook()
+    const { connection, secret } = await h.connections.createWebhook({ ownerUserId: null })
     await webhookRequest(h.app, connection.id, secret, JSON.stringify({ hello: 'world' }))
     const [row] = await h.db.select().from(schema.events)
     expect(row?.envelope).toMatchObject({ type: 'webhook.event' })
   })
 
   it('dedupes on X-Relay-Event-Id', async () => {
-    const { connection, secret } = await h.connections.createWebhook()
+    const { connection, secret } = await h.connections.createWebhook({ ownerUserId: null })
     const a = await webhookRequest(h.app, connection.id, secret, '{"n":1}', { eventId: 'evt-1' })
     const b = await webhookRequest(h.app, connection.id, secret, '{"n":2}', { eventId: 'evt-1' })
     expect([a.status, b.status]).toEqual([200, 200])
@@ -38,7 +38,7 @@ describe('POST /hooks/webhook/:connectionId', () => {
   })
 
   it('dedupes on body hash without an event id', async () => {
-    const { connection, secret } = await h.connections.createWebhook()
+    const { connection, secret } = await h.connections.createWebhook({ ownerUserId: null })
     await webhookRequest(h.app, connection.id, secret, '{"n":1}')
     await webhookRequest(h.app, connection.id, secret, '{"n":1}')
     await webhookRequest(h.app, connection.id, secret, '{"n":2}')
@@ -46,15 +46,15 @@ describe('POST /hooks/webhook/:connectionId', () => {
   })
 
   it('scopes dedup keys per connection', async () => {
-    const a = await h.connections.createWebhook()
-    const b = await h.connections.createWebhook()
+    const a = await h.connections.createWebhook({ ownerUserId: null })
+    const b = await h.connections.createWebhook({ ownerUserId: null })
     await webhookRequest(h.app, a.connection.id, a.secret, '{"n":1}')
     await webhookRequest(h.app, b.connection.id, b.secret, '{"n":1}')
     expect(await h.db.select().from(schema.events)).toHaveLength(2)
   })
 
   it('rejects a bad signature, wrong secret, and stale timestamp with 401', async () => {
-    const { connection, secret } = await h.connections.createWebhook()
+    const { connection, secret } = await h.connections.createWebhook({ ownerUserId: null })
     const tampered = await webhookRequest(h.app, connection.id, secret, '{"n":1}', { signature: 'sha256=00' })
     const wrong = await webhookRequest(h.app, connection.id, 'not-the-secret', '{"n":1}')
     const stale = await webhookRequest(h.app, connection.id, secret, '{"n":1}', {
@@ -73,7 +73,7 @@ describe('POST /hooks/webhook/:connectionId', () => {
   })
 
   it('stores the webhook secret encrypted', async () => {
-    const { connection, secret } = await h.connections.createWebhook()
+    const { connection, secret } = await h.connections.createWebhook({ ownerUserId: null })
     const [cred] = await h.db.select().from(schema.credentials)
     expect(cred?.ciphertext).not.toContain(secret)
     expect(await h.connections.getCredentials(connection.id)).toEqual({ webhook_secret: secret })

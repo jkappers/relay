@@ -39,6 +39,15 @@ describe('slack actions', () => {
     expect(req.body).toEqual({ channel: env.context.channelId, text: 'hello', thread_ts: env.context.messageId })
   })
 
+  it('uses the token of the event connection, never another connection', async () => {
+    await h.connections.upsertSlack({ teamId: 'T999OTHER', userId: 'U999OTHER', accessToken: 'xoxp-other-tenant', ownerUserId: null })
+    const s = await slackSetup(h)
+    await h.connections.upsertSlack({ teamId: 'T888OTHER', userId: 'U888OTHER', accessToken: 'xoxp-third-tenant', ownerUserId: null })
+    await run(s.delivery.id, [{ type: 'reply', text: 'hi' }])
+    await run(s.delivery.id, [{ type: 'thread.history' }], 'async')
+    expect(h.slack.requests.map((r) => r.headers.authorization)).toEqual([`Bearer ${TOKEN}`, `Bearer ${TOKEN}`])
+  })
+
   it('reply uses the parent thread_ts for a message inside a thread', async () => {
     const s = await slackSetup(h, { envelope: fixtureEnvelope('message_channels_thread_reply') })
     const env = s.event.envelope
@@ -476,8 +485,8 @@ describe('loop guard', () => {
   })
 
   it('webhook events are never echoes', async () => {
-    const { connection } = await h.connections.createWebhook()
-    const dest = await createDestination(h.db, h.cipher, { name: 'd', url: 'http://127.0.0.1:1/x' })
+    const { connection } = await h.connections.createWebhook({ ownerUserId: null })
+    const dest = await createDestination(h.db, h.cipher, connection.id, { name: 'd', url: 'http://127.0.0.1:1/x' })
     await makeRoute(h, { destinationIds: [dest.destination.id] })
     const ev = await insertEvent(h, connection.id)
     await h.router({ eventId: ev.id })
