@@ -10,10 +10,12 @@ import {
   AdminError,
   ConnectionOwnedError,
   createAgentDestination,
+  classifierSettingsInput,
   createAgentDestinationInput,
   createDestination,
   createDestinationInput,
   createRoute,
+  createRouteFields,
   createRouteInput,
   deleteDestination,
   deleteRoute,
@@ -26,6 +28,7 @@ import {
   revokeReplyToken,
   rotateDestinationSecret,
   schema,
+  setClassifierSettings,
   setRouteEnabled,
   updateDestination,
   updateRoute,
@@ -119,6 +122,9 @@ const serializeRoute = (r: RouteRow, destinationIds: string[]) => ({
   textRegex: r.textRegex,
   includeSubtypes: r.includeSubtypes,
   enabled: r.enabled,
+  selection: r.selection,
+  intent: r.intent,
+  classifierFallback: r.classifierFallback,
   destinationIds,
   createdAt: r.createdAt,
   updatedAt: r.updatedAt,
@@ -174,7 +180,7 @@ const createDestinationBody = z.discriminatedUnion('kind', [
 ])
 
 const routeBody = createRouteInput
-const previewBody = createRouteInput.omit({ name: true, destinationIds: true })
+const previewBody = createRouteFields.omit({ name: true, destinationIds: true })
 
 const loginBody = z.object({ email: z.string().trim().toLowerCase().min(1).max(254), password: z.string().max(PASSWORD_MAX) })
 const webhookBody = z.object({ name: z.string().trim().min(1).max(100).optional() })
@@ -442,6 +448,21 @@ export function consoleApi(deps: ConsoleApiDeps) {
       agentRuns: runs?.n ?? 0,
       agentCostUsd: runs?.cost ?? '0',
     })
+  })
+
+  t.get('/classifier', async (c) => {
+    const [row] = await db
+      .select({ mode: connections.classifierMode, dailyLimit: connections.classifierDailyLimit })
+      .from(connections)
+      .where(eq(connections.id, c.var.connectionId))
+    if (!row) throw notFound('connection not found')
+    return c.json(row)
+  })
+
+  t.put('/classifier', validated('json', classifierSettingsInput), async (c) => {
+    const row = await setClassifierSettings(db, c.var.connectionId, c.req.valid('json') as z.output<typeof classifierSettingsInput>)
+    mutated('connection', 'update')
+    return c.json(row)
   })
 
   t.post('/revoke', async (c) => {
