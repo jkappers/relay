@@ -119,7 +119,7 @@ export async function startSlackStub(): Promise<SlackStub> {
 
 export const DISCORD_STUB_BOT_ID = '1100000000000000001'
 
-export type DiscordRoute = 'createMessage' | 'editMessage' | 'createReaction' | 'getMessages' | 'getCurrentUser' | 'other'
+export type DiscordRoute = 'createMessage' | 'editMessage' | 'createReaction' | 'getMessages' | 'getCurrentUser' | 'getCurrentUserGuilds' | 'other'
 
 export interface DiscordStubRequest {
   method: string
@@ -143,6 +143,7 @@ export interface DiscordStub {
 function discordRoute(method: string, path: string): DiscordRoute {
   const p = path.split('?')[0]!
   if (method === 'GET' && p === '/users/@me') return 'getCurrentUser'
+  if (method === 'GET' && p === '/users/@me/guilds') return 'getCurrentUserGuilds'
   if (/^\/channels\/[^/]+\/messages$/.test(p)) return method === 'POST' ? 'createMessage' : method === 'GET' ? 'getMessages' : 'other'
   if (method === 'PATCH' && /^\/channels\/[^/]+\/messages\/[^/]+$/.test(p)) return 'editMessage'
   if (method === 'PUT' && /^\/channels\/[^/]+\/messages\/[^/]+\/reactions\/[^/]+\/@me$/.test(p)) return 'createReaction'
@@ -175,6 +176,8 @@ export async function startDiscordStub(): Promise<DiscordStub> {
         }
       case 'getCurrentUser':
         return { json: { id: DISCORD_STUB_BOT_ID, username: 'relay', bot: true } }
+      case 'getCurrentUserGuilds':
+        return { json: [] }
       default:
         return { status: 404, json: { message: '404: Not Found', code: 0 } }
     }
