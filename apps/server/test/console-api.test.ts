@@ -71,6 +71,38 @@ const jobCount = async (name: string, key: string) => {
   return rows[0]!.n
 }
 
+describe('sms connections', () => {
+  const body = { name: 'Support', accountSid: `AC${'a'.repeat(32)}`, number: '+15550001111', authToken: 'super-secret-token' }
+
+  it('creates an SMS connection owned by the caller and never returns the token', async () => {
+    const res = await me.api('POST', '/api/connections/sms', body)
+    expect(res.status).toBe(201)
+    const text = await res.text()
+    expect(text).not.toContain(body.authToken)
+    const created = JSON.parse(text)
+    expect(created).toMatchObject({ name: 'Support', provider: 'sms', status: 'active', url: `http://relay.test/hooks/sms/${created.id}` })
+    expect((await h.connections.getCredentials(created.id)).sms_auth_token).toBe(body.authToken)
+
+    const list = await (await me.api('GET', '/api/connections')).text()
+    expect(list).not.toContain(body.authToken)
+    expect(JSON.parse(list).items.find((c: any) => c.id === created.id)).toMatchObject({ provider: 'sms', teamId: body.accountSid, userId: body.number, role: 'owner' })
+  })
+
+  it('answers 409 for a number that is already connected', async () => {
+    await me.api('POST', '/api/connections/sms', body)
+    const again = await me.api('POST', '/api/connections/sms', body)
+    expect(again.status).toBe(409)
+    expect(await json(again)).toMatchObject({ error: 'number_already_connected' })
+  })
+
+  it('validates the account SID, number, and token', async () => {
+    for (const bad of [{ accountSid: 'nope' }, { number: '5550001111' }, { number: '+0123' }, { authToken: 'short' }]) {
+      const res = await me.api('POST', '/api/connections/sms', { ...body, ...bad })
+      expect(res.status).toBe(400)
+    }
+  })
+})
+
 describe('connections', () => {
   it('creates a webhook connection owned by the caller and shows the secret once', async () => {
     const res = await me.api('POST', '/api/connections/webhook', { name: 'Deploys' })

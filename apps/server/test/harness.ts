@@ -14,6 +14,7 @@ import {
 } from '@relay/core'
 import { resetDb, startSlackStub, TEST_DATABASE_URL, TEST_MASTER_KEY, type SlackStub } from '@relay/core/testing'
 import { computeSlackSignature } from '@relay/provider-slack'
+import { computeTwilioSignature } from '@relay/provider-sms'
 import { computeWebhookSignature } from '@relay/provider-webhook'
 import { afterAll, beforeAll, beforeEach, vi } from 'vitest'
 import { scryptHasher } from '../src/accounts/password'
@@ -129,6 +130,28 @@ export function webhookRequest(
   }
   if (opts.eventId) headers['x-relay-event-id'] = opts.eventId
   return app.request(`/hooks/webhook/${connectionId}`, { method: 'POST', headers, body })
+}
+
+export const SMS_ACCOUNT_SID = `AC${'a'.repeat(32)}`
+export const SMS_NUMBER = '+15550001111'
+export const SMS_TOKEN = 'twilio-auth-token'
+
+export function smsRequest(
+  app: Harness['app'],
+  connectionId: string,
+  params: Record<string, string>,
+  opts: { token?: string; signature?: string; query?: string } = {},
+) {
+  const url = `${PUBLIC_URL}/hooks/sms/${connectionId}${opts.query ?? ''}`
+  const grouped = Object.fromEntries(Object.entries(params).map(([k, v]) => [k, [v]]))
+  return app.request(`/hooks/sms/${connectionId}${opts.query ?? ''}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-twilio-signature': opts.signature ?? computeTwilioSignature(opts.token ?? SMS_TOKEN, url, grouped),
+    },
+    body: new URLSearchParams(params).toString(),
+  })
 }
 
 export async function routeJobCount(db: Db, eventId: string): Promise<number> {
