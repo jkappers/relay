@@ -7,6 +7,7 @@ import {
   jsonb,
   numeric,
   pgEnum,
+  pgSequence,
   pgTable,
   primaryKey,
   text,
@@ -41,6 +42,7 @@ export const users = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     email: text('email').notNull(),
     passwordHash: text('password_hash').notNull(),
+    isAdmin: boolean('is_admin').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -319,7 +321,43 @@ export const revokedTokens = pgTable('revoked_tokens', {
   revokedAt: timestamp('revoked_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+export const providerAppVersions = pgSequence('provider_app_versions')
+
+export const providerApps = pgTable(
+  'provider_apps',
+  {
+    provider: text('provider').primaryKey(),
+    clientId: text('client_id').notNull(),
+    clientSecretCt: text('client_secret_ct').notNull(),
+    signingSecretCt: text('signing_secret_ct'),
+    previousSigningSecretCt: text('previous_signing_secret_ct'),
+    previousExpiresAt: timestamp('previous_expires_at', { withTimezone: true }),
+    botTokenCt: text('bot_token_ct'),
+    allowedUserIds: text('allowed_user_ids').array().notNull().default(sql`'{}'::text[]`),
+    version: integer('version')
+      .notNull()
+      .default(sql`nextval('provider_app_versions')`),
+    updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('provider_apps_provider', sql`${t.provider} in ('slack', 'discord')`),
+    check('provider_apps_slack_signing_secret', sql`${t.provider} <> 'slack' or ${t.signingSecretCt} is not null`),
+    check('provider_apps_discord_bot_token', sql`${t.provider} <> 'discord' or ${t.botTokenCt} is not null`),
+  ],
+)
+
+export const providerAppStatus = pgTable('provider_app_status', {
+  provider: text('provider').primaryKey(),
+  state: text('state').notNull(),
+  lastReadyAt: timestamp('last_ready_at', { withTimezone: true }),
+  lastCloseCode: integer('last_close_code'),
+  lastSignedOkAt: timestamp('last_signed_ok_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export type UserRow = typeof users.$inferSelect
+export type ProviderAppRow = typeof providerApps.$inferSelect
 export type ConnectionRow = typeof connections.$inferSelect
 export type EventRow = typeof events.$inferSelect
 export type CredentialKind = (typeof credentialKind.enumValues)[number]
