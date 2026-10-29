@@ -9,7 +9,7 @@ const ts = String(now)
 
 const verify = (overrides: Partial<Parameters<typeof verifySlackSignature>[0]> = {}) =>
   verifySlackSignature({
-    signingSecret: secret,
+    signingSecrets: [secret],
     timestamp: ts,
     signature: computeSlackSignature(secret, ts, body),
     rawBody: body,
@@ -45,6 +45,18 @@ describe('slack signature', () => {
     expect(() => verify({ timestamp: edge, signature: computeSlackSignature(secret, edge, body) })).not.toThrow()
   })
 
+  it('returns which secret signed the request', () => {
+    expect(verify({ signingSecrets: [secret, 'old-secret'] })).toBe(0)
+    expect(verify({ signingSecrets: ['new-secret', secret] })).toBe(1)
+    expect(() => verify({ signingSecrets: ['new-secret', 'old-secret'] })).toThrow(SignatureError)
+    expect(() => verify({ signingSecrets: [] })).toThrow(SignatureError)
+  })
+
+  it('checks the window before any secret', () => {
+    const old = String(now - 301)
+    expect(() => verify({ signingSecrets: ['x', secret], timestamp: old, signature: computeSlackSignature(secret, old, body) })).toThrow(/window/)
+  })
+
   it('rejects missing headers', () => {
     expect(() => verify({ signature: null })).toThrow(SignatureError)
     expect(() => verify({ timestamp: null })).toThrow(SignatureError)
@@ -58,7 +70,7 @@ describe('slack signature', () => {
     expect(computeSlackSignature('8f742231b10e8888abcd99yyyzzz85a5', '1531420618', docBody)).toBe(expected)
     expect(() =>
       verifySlackSignature({
-        signingSecret: '8f742231b10e8888abcd99yyyzzz85a5',
+        signingSecrets: ['8f742231b10e8888abcd99yyyzzz85a5'],
         timestamp: '1531420618',
         signature: expected,
         rawBody: docBody,

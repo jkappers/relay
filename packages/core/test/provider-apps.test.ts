@@ -8,6 +8,7 @@ import {
   createProviderAppCipher,
   createProviderAppStore,
   discordBotIdFromToken,
+  discordBotTokenReader,
   MetricsRegistry,
   ProviderAppFieldsError,
   providerAppEnv,
@@ -235,5 +236,19 @@ describe('provider app store', () => {
     await store.save('slack', SLACK, { updatedBy: null })
     await store.save('slack', { ...SLACK, clientId: '3333333333.4444444444' }, { updatedBy: null })
     expect(await store.get('slack')).toMatchObject({ config: { clientId: '3333333333.4444444444' } })
+  })
+})
+
+describe('discordBotTokenReader', () => {
+  it('reads the env token, then a saved one, and nothing when invalid', async () => {
+    const { store } = makeStore()
+    const read = discordBotTokenReader(store)
+    expect(await read()).toBe('env-bot-token')
+    await store.save('discord', DISCORD, { updatedBy: null })
+    expect(await read()).toBe(DISCORD.botToken)
+    await db.update(schema.providerApps).set({ botTokenCt: 'v1.AAAA' }).where(eq(schema.providerApps.provider, 'discord'))
+    store.invalidate('discord')
+    expect(await read()).toBeUndefined()
+    expect(await discordBotTokenReader(makeStore({ env: { slack: null, discord: null } }).store)()).toBeUndefined()
   })
 })

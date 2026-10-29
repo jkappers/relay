@@ -11,6 +11,8 @@ let stub: DiscordStub
 let runtime: ProviderRuntime
 let connection: Connection
 
+const tokenOf = (token: string | undefined) => async () => token
+
 const envelope = (patch: Partial<Envelope['context']> = {}, actor: string | null = INSTALLER_ID): Envelope => ({
   id: '00000000-0000-4000-8000-000000000001',
   provider: 'discord',
@@ -44,7 +46,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDb(db)
   stub.reset()
-  runtime = createDiscordRuntime({ db, botToken: 'bot-token', apiBase: stub.url })
+  runtime = createDiscordRuntime({ db, botToken: tokenOf('bot-token'), apiBase: stub.url })
   connection = await store.upsertInstall({ provider: 'discord', identity: 'team', teamId: GUILD_ID, userId: INSTALLER_ID, name: 'Discord SomeTest', ownerUserId: null })
 })
 afterAll(async () => {
@@ -100,7 +102,7 @@ describe('discord runtime actions', () => {
   })
 
   it('fails with no_credentials when no bot token is set', async () => {
-    runtime = createDiscordRuntime({ db, apiBase: stub.url })
+    runtime = createDiscordRuntime({ db, botToken: tokenOf(undefined), apiBase: stub.url })
     expect((await rejection(run('post', { text: 'x' }))).code).toBe('no_credentials')
     expect(stub.requests).toHaveLength(0)
   })
@@ -131,7 +133,7 @@ describe('discord runtime error mapping', () => {
     stub.on('createMessage', () => ({ status: 502, body: 'bad gateway' }))
     const e5 = await rejection(run('post', { text: 'x' }))
     expect([e5.code, e5.retryable]).toEqual(['http_502', true])
-    runtime = createDiscordRuntime({ db, botToken: 't', apiBase: 'http://127.0.0.1:1/api/v10' })
+    runtime = createDiscordRuntime({ db, botToken: tokenOf('t'), apiBase: 'http://127.0.0.1:1/api/v10' })
     const net = await rejection(run('post', { text: 'x' }))
     expect([net.code, net.retryable]).toEqual(['network_error', true])
   })
@@ -139,11 +141,44 @@ describe('discord runtime error mapping', () => {
 
 describe('discord isSelfEcho', () => {
   it('is true for a message Relay sent or one written by the bot user', async () => {
-    runtime = createDiscordRuntime({ db, botToken: 'bot-token', apiBase: stub.url, fetch })
+    runtime = createDiscordRuntime({ db, botToken: tokenOf('bot-token'), apiBase: stub.url, fetch })
     expect(await runtime.isSelfEcho(envelope(), connection)).toBe(false)
     expect(await runtime.isSelfEcho(envelope({}, DISCORD_STUB_BOT_ID), connection)).toBe(true)
     await db.insert(schema.sentMessages).values({ connectionId: connection.id, channel: '290926798999357250', ts: '334385199974967042' })
     expect(await runtime.isSelfEcho(envelope(), connection)).toBe(true)
     expect(stub.calls('getCurrentUser')).toHaveLength(1)
+  })
+
+  it('looks the bot user up again after the token changes', async () => {
+    let token: string | undefined = 'bot-token'
+    runtime = createDiscordRuntime({ db, botToken: async () => token, apiBase: stub.url, fetch })
+    expect(await runtime.isSelfEcho(envelope({}, DISCORD_STUB_BOT_ID), connection)).toBe(true)
+    expect(await runtime.isSelfEcho(envelope({}, DISCORD_STUB_BOT_ID), connection)).toBe(true)
+    expect(stub.calls('getCurrentUser')).toHaveLength(1)
+    token = 'rotated-token'
+    expect(await runtime.isSelfEcho(envelope({}, DISCORD_STUB_BOT_ID), connection)).toBe(true)
+    expect(stub.calls('getCurrentUser')).toHaveLength(2)
+    token = undefined
+    expect(await runtime.isSelfEcho(envelope({}, DISCORD_STUB_BOT_ID), connection)).toBe(false)
+  })
+})
+
+describe('discord runtime token getter', () => {
+  it('reads the token on every call, so a change applies at once', async () => {
+    let token: string | undefined
+    runtime = createDiscordRuntime({ db, botToken: async () => token, apiBase: stub.url })
+    expect((await rejection(run('post', { text: 'x' }))).code).toBe('no_credentials')
+    token = 'first-token'
+    await run('post', { text: 'x' })
+    token = 'second-token'
+    await run('post', { text: 'y' })
+    expect(stub.calls('createMessage').map((r) => r.headers.authorization)).toEqual(['Bot first-token', 'Bot second-token'])
+  })
+
+  it('fails retryably when the token cannot be read', async () => {
+    runtime = createDiscordRuntime({ db, botToken: () => Promise.reject(new Error('db down')), apiBase: stub.url })
+    const err = await rejection(run('post', { text: 'x' }))
+    expect([err.code, err.retryable]).toEqual(['credentials_unavailable', true])
+    expect(stub.requests).toHaveLength(0)
   })
 })

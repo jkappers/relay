@@ -88,7 +88,7 @@ export function useHarness(opts: { backoffBaseMs?: number; backoffCapMs?: number
     h.runtimes = {
       slack: createSlackRuntime({ db: h.db, apiBase: h.slack.url }),
       webhook: createWebhookRuntime(),
-      discord: createDiscordRuntime({ db: h.db, botToken: 'discord-bot-token', apiBase: h.discord.url }),
+      discord: createDiscordRuntime({ db: h.db, botToken: async () => 'discord-bot-token', apiBase: h.discord.url }),
     }
     h.execute = createActionExecutor({ db: h.db, connections: h.connections, runtimes: h.runtimes, counters: h.metrics })
     h.actions = createActionsHandler({ db: h.db, queue: h.queue, execute: h.execute })
