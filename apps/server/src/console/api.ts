@@ -340,8 +340,11 @@ export function consoleApi(deps: ConsoleApiDeps) {
 
   api.get('/session', async (c) => {
     const [user] = await db.select({ id: users.id, email: users.email, isAdmin: users.isAdmin }).from(users).where(eq(users.id, c.var.userId))
-    const mine = await deps.connections.listForUser(c.var.userId)
-    return c.json({ user, connections: mine.map(serializeConnection), signup: deps.signupMode })
+    const [mine, [anyAdmin]] = await Promise.all([
+      deps.connections.listForUser(c.var.userId),
+      db.select({ id: users.id }).from(users).where(eq(users.isAdmin, true)).limit(1),
+    ])
+    return c.json({ user, connections: mine.map(serializeConnection), signup: deps.signupMode, adminExists: anyAdmin !== undefined })
   })
 
   api.get('/connections', async (c) => {
