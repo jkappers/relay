@@ -16,6 +16,7 @@ import {
 } from 'drizzle-orm/pg-core'
 
 export const connectionStatus = pgEnum('connection_status', ['active', 'revoked'])
+export const classifierMode = pgEnum('classifier_mode', ['off', 'shadow', 'enforce'])
 
 export const connections = pgTable(
   'connections',
@@ -26,6 +27,8 @@ export const connections = pgTable(
     userId: text('user_id'),
     name: text('name'),
     status: connectionStatus('status').notNull().default('active'),
+    classifierMode: classifierMode('classifier_mode').notNull().default('off'),
+    classifierDailyLimit: integer('classifier_daily_limit').notNull().default(1000),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -142,6 +145,9 @@ export const destinations = pgTable(
   ],
 )
 
+export const routeSelection = pgEnum('route_selection', ['always', 'classifier'])
+export const classifierFallback = pgEnum('classifier_fallback', ['drop', 'deliver'])
+
 export const routes = pgTable(
   'routes',
   {
@@ -155,10 +161,17 @@ export const routes = pgTable(
     textRegex: text('text_regex'),
     includeSubtypes: boolean('include_subtypes').notNull().default(false),
     enabled: boolean('enabled').notNull().default(true),
+    selection: routeSelection('selection').notNull().default('always'),
+    intent: text('intent'),
+    classifierFallback: classifierFallback('classifier_fallback').notNull().default('drop'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('routes_connection_idx').on(t.connectionId)],
+  (t) => [
+    index('routes_connection_idx').on(t.connectionId),
+    check('routes_intent_length', sql`${t.intent} is null or char_length(${t.intent}) <= 500`),
+    check('routes_classifier_needs_intent', sql`${t.selection} <> 'classifier' or ${t.intent} is not null`),
+  ],
 )
 
 export const routeDestinations = pgTable(
@@ -268,6 +281,33 @@ export const agentRuns = pgTable('agent_runs', {
   error: text('error'),
 })
 
+export const routeDecisionStatus = pgEnum('route_decision_status', ['ok', 'fallback', 'budget_exceeded'])
+
+export const routeDecisions = pgTable(
+  'route_decisions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    eventId: uuid('event_id')
+      .notNull()
+      .unique()
+      .references(() => events.id),
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => connections.id),
+    mode: classifierMode('mode').notNull(),
+    model: text('model').notNull(),
+    candidates: jsonb('candidates').$type<{ routeId: string; label: string }[]>().notNull(),
+    selected: uuid('selected').array().notNull(),
+    status: routeDecisionStatus('status').notNull(),
+    error: text('error'),
+    latencyMs: integer('latency_ms').notNull().default(0),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('route_decisions_connection_created_idx').on(t.connectionId, t.createdAt)],
+)
+
 export const revokedTokens = pgTable('revoked_tokens', {
   jti: text('jti').primaryKey(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }).notNull().defaultNow(),
@@ -281,3 +321,5 @@ export type DestinationRow = typeof destinations.$inferSelect
 export type AgentRunRow = typeof agentRuns.$inferSelect
 export type RouteRow = typeof routes.$inferSelect
 export type DeliveryRow = typeof deliveries.$inferSelect
+export type RouteDecisionRow = typeof routeDecisions.$inferSelect
+export type ClassifierMode = (typeof classifierMode.enumValues)[number]

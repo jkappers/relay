@@ -67,7 +67,9 @@ export async function createDestination(
   return { destination: destination!, secret }
 }
 
-export const createRouteInput = z.object({
+export const MAX_INTENT_LENGTH = 500
+
+export const createRouteFields = z.object({
   name: z.string().min(1),
   eventType: z.string().min(1),
   destinationIds: z.array(z.uuid()).min(1),
@@ -84,8 +86,40 @@ export const createRouteInput = z.object({
     }),
   includeSubtypes: z.boolean().default(false),
   enabled: z.boolean().default(true),
+  selection: z.enum(['always', 'classifier']).optional(),
+  intent: z
+    .string()
+    .trim()
+    .max(MAX_INTENT_LENGTH)
+    .nullable()
+    .optional()
+    .transform((v) => (v === '' ? null : v)),
+  classifierFallback: z.enum(['drop', 'deliver']).optional(),
+})
+
+export const createRouteInput = createRouteFields.superRefine((v, ctx) => {
+  if (v.selection === 'classifier' && !v.intent) ctx.addIssue({ code: 'custom', path: ['intent'], message: 'a classifier route needs an intent' })
 })
 export type CreateRouteInput = z.input<typeof createRouteInput>
+
+export const classifierSettingsInput = z
+  .object({
+    mode: z.enum(['off', 'shadow', 'enforce']),
+    dailyLimit: z.number().int().min(0).max(100_000),
+  })
+  .strict()
+export type ClassifierSettingsInput = z.input<typeof classifierSettingsInput>
+
+export async function setClassifierSettings(db: Db, connectionId: string, input: ClassifierSettingsInput) {
+  const p = classifierSettingsInput.parse(input)
+  const [row] = await db
+    .update(connections)
+    .set({ classifierMode: p.mode, classifierDailyLimit: p.dailyLimit, updatedAt: sql`now()` })
+    .where(eq(connections.id, connectionId))
+    .returning({ mode: connections.classifierMode, dailyLimit: connections.classifierDailyLimit })
+  if (!row) throw new AdminError('connection not found', 'not_found')
+  return row
+}
 
 async function assertRouteRefs(db: Pick<Db, 'select'>, connectionId: string, destinationIds: string[]) {
   const unique = [...new Set(destinationIds)]
@@ -110,6 +144,9 @@ export async function createRoute(db: Db, connectionId: string, input: CreateRou
         textRegex: parsed.textRegex,
         includeSubtypes: parsed.includeSubtypes,
         enabled: parsed.enabled,
+        selection: parsed.selection,
+        intent: parsed.intent,
+        classifierFallback: parsed.classifierFallback,
       })
       .returning()
     await tx
@@ -123,6 +160,12 @@ export async function updateRoute(db: Db, connectionId: string, id: string, inpu
   const parsed = createRouteInput.parse(input)
   await assertRouteRefs(db, connectionId, parsed.destinationIds)
   return db.transaction(async (tx) => {
+    const inTenant = and(eq(routes.id, id), eq(routes.connectionId, connectionId))
+    const [existing] = await tx.select({ selection: routes.selection, intent: routes.intent }).from(routes).where(inTenant).for('update')
+    if (!existing) throw new AdminError('route not found', 'not_found')
+    const selection = parsed.selection ?? existing.selection
+    const intent = parsed.intent !== undefined ? parsed.intent : existing.intent
+    if (selection === 'classifier' && !intent) throw new AdminError('a classifier route needs an intent', 'invalid')
     const [route] = await tx
       .update(routes)
       .set({
@@ -132,9 +175,12 @@ export async function updateRoute(db: Db, connectionId: string, id: string, inpu
         textRegex: parsed.textRegex,
         includeSubtypes: parsed.includeSubtypes,
         enabled: parsed.enabled,
+        selection,
+        intent,
+        ...(parsed.classifierFallback !== undefined && { classifierFallback: parsed.classifierFallback }),
         updatedAt: new Date(),
       })
-      .where(and(eq(routes.id, id), eq(routes.connectionId, connectionId)))
+      .where(inTenant)
       .returning()
     if (!route) throw new AdminError('route not found', 'not_found')
     await tx.delete(routeDestinations).where(eq(routeDestinations.routeId, id))
