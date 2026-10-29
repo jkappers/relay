@@ -1,6 +1,6 @@
 # relay
 
-Relay is an event-ingest service. Providers like Slack send it events. Relay checks each event's signature, saves it, and puts it on a queue. A worker picks it up from there.
+Relay is an event-ingest service. Providers like Slack and Discord send it events. Relay checks each event's signature, saves it, and puts it on a queue. A worker picks it up from there.
 
 Milestones 1 to 6 are done: ingest, routing, signed HTTP delivery with retries, actions (reply, react, and more) with a loop guard, agent destinations that run Claude on an event, a web console, and user accounts with each connection as its own tenant.
 
@@ -29,11 +29,13 @@ Events with no text never match a text filter.
 
 | Path | What it is |
 |---|---|
-| `apps/server` | Hono HTTP server: ingress, Slack OAuth, `POST /actions`, `/metrics`, `/healthz`, the console API (`/api`), and the built console |
+| `apps/server` | Hono HTTP server: ingress, Slack and Discord OAuth, `POST /actions`, `/metrics`, `/healthz`, the console API (`/api`), and the built console |
 | `apps/console` | The web console: Vite + React. Built files go to `apps/console/dist` |
 | `apps/worker` | pg-boss consumers: router, dispatcher, actions, and agent runs, plus `/metrics` and `/healthz` |
+| `apps/gateway` | Discord Gateway client. One copy at a time (Postgres advisory lock). Stores mentions and DMs. `/metrics` and `/healthz` |
 | `packages/core` | Config, crypto, DB schema and migrations, queue, envelope, provider interface, metrics |
 | `packages/providers/slack` | Slack adapter: signature check, normalize, OAuth |
+| `packages/providers/discord` | Discord: normalize, connection lookup, REST actions, OAuth bot install |
 | `packages/providers/webhook` | Generic signed-webhook adapter |
 | `packages/providers/sms` | Twilio SMS adapter: signature check, normalize, `send` action |
 | `packages/destinations/agent` | Agent runner (Claude Agent SDK), tool set, prompts |
@@ -51,9 +53,10 @@ printf '%s' 'a long passphrase' | pnpm --filter @relay/server users:create --ema
 pnpm build:console
 pnpm dev:server               # http://localhost:$PORT
 pnpm dev:worker
+pnpm dev:gateway              # only if you use Discord
 ```
 
-Then sign in. With no connections yet, the console asks you to add one: connect Slack or create a signed webhook.
+Then sign in. With no connections yet, the console asks you to add one: connect Slack, add a Discord server, or create a signed webhook. Slack and Discord show up only when their app settings are in `.env`.
 
 Run all checks (install, typecheck, migration drift, tests):
 
@@ -61,23 +64,29 @@ Run all checks (install, typecheck, migration drift, tests):
 scripts/check.sh
 ```
 
-Tests use the `relay_test` database. Compose creates it on first start, so tests never touch dev data.
+Tests use the `relay_test` database. Compose creates it on first start, so tests never touch dev data. Set `TEST_DATABASE_URL` to use another one (each run drops and re-creates its tables).
 
 ## Environment
 
 | Var | Used by | Notes |
 |---|---|---|
-| `DATABASE_URL` | server, worker, CLI | Postgres URL |
-| `RELAY_MASTER_KEY` | server, worker, CLI | 32 random bytes, base64. Encrypts stored tokens and secrets. Startup fails if it's missing or the wrong size. |
+| `DATABASE_URL` | server, worker, gateway, CLI | Postgres URL |
+| `RELAY_MASTER_KEY` | server, worker, gateway, CLI | 32 random bytes, base64. Encrypts stored tokens and secrets. Startup fails if it's missing or the wrong size. |
 | `SIGNUP_MODE` | server | `closed` (default) or `open`. When closed, accounts come only from `users:create`. When open, anyone who can reach the console can sign up. |
 | `PORT` | server | Default 3000 |
-| `PUBLIC_URL` | server, worker | Public HTTPS base URL. The OAuth `redirect_uri` is `$PUBLIC_URL/oauth/slack/callback`. The worker sends `$PUBLIC_URL/actions` to destinations. |
+| `PUBLIC_URL` | server, worker | Public HTTPS base URL. The OAuth `redirect_uri` is `$PUBLIC_URL/oauth/<slack or discord>/callback`. The worker sends `$PUBLIC_URL/actions` to destinations. |
 | `SLACK_API_BASE_URL` | server, worker | Slack Web API base. Default `https://slack.com/api`. Change only to stub Slack in tests. |
 | `SMS_API_BASE_URL` | server, worker | Twilio API base. Default `https://api.twilio.com`. Change only to stub Twilio in tests. |
 | `REPLY_TOKEN_TTL_SECONDS` | worker | How long a reply token lives. Default 3600. |
-| `SLACK_SIGNING_SECRET` | server | From the Slack app's Basic Information page |
+| `SLACK_SIGNING_SECRET` | server | From the Slack app's Basic Information page. Optional: Slack is on only when this and the two below are all set. |
 | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | server | Same page |
 | `SLACK_ALLOWED_USER_IDS` | server | Optional. Comma-separated Slack user IDs that may connect. If set, others get a 403 and nothing is stored. |
+| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` | server | From the Discord app's OAuth2 page. Optional: Discord install is on only when both are set. |
+| `DISCORD_BOT_TOKEN` | server, worker, gateway | From the Discord app's Bot page. One token for every Discord connection. Required by the gateway. Without it, Discord actions fail with `no_credentials`. |
+| `DISCORD_API_BASE_URL` | server, worker | Discord REST base. Default `https://discord.com/api/v10`. Change only to stub Discord in tests. |
+| `DISCORD_ALLOWED_USER_IDS` | server | Optional. Comma-separated Discord user IDs that may install the bot. If set, others get a 403 and nothing is stored. |
+| `GATEWAY_METRICS_PORT` | gateway | Default 9466. Serves `/metrics` and `/healthz`. |
+| `GATEWAY_LOCK_POLL_SECONDS` | gateway | How often a waiting copy retries the leader lock, and how often the leader checks it. Default 15. |
 | `WORKER_METRICS_PORT` | worker | Default 9465. Serves `/metrics` and `/healthz`. |
 | `DISPATCH_BACKOFF_BASE_MS`, `DISPATCH_BACKOFF_CAP_MS` | worker | Retry backoff. Defaults 5000 and 900000. |
 | `SWEEP_INTERVAL_SECONDS`, `SWEEP_GRACE_SECONDS` | worker | How often the sweeper runs (60) and how old stuck work must be before it is requeued (300). |
@@ -104,6 +113,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 | `POST /actions` | Async actions, with a reply token. See Actions. |
 | `GET /oauth/slack/start` | Starts Slack OAuth (user scopes only). Needs a console session. |
 | `GET /oauth/slack/callback` | Slack OAuth redirect target. Sends you back to the console. |
+| `GET /oauth/discord/start` | Starts the Discord bot install. Needs a console session. |
+| `GET /oauth/discord/callback` | Discord OAuth redirect target. Sends you back to the console. |
 | `GET /` | The web console (static files, with fallback to `index.html`) |
 | `/api/*` | Console API. See below. |
 
@@ -119,6 +130,7 @@ Console API. Everything needs a session except signing in and signing up.
 | `POST /api/connections/webhook` | New webhook connection you own. Body `{name?}`. The secret shows once. |
 | `POST /api/connections/sms` | New SMS connection you own. Body `{name?, accountSid, number, authToken}`. Returns the webhook `url`. The auth token is never returned. 409 if that number is already connected. |
 | `GET /api/connections/slack-url` | Where to start Slack OAuth. |
+| `GET /api/connections/providers` | `{slack, discord}`: the install start URL for each, or null when its app settings are missing. |
 | `POST /api/tokens/revoke` | Revoke a reply token by `jti`. |
 | `/api/c/:connectionId/*` | Everything else, inside one connection: `overview`, `events`, `events/facets`, `events/:id`, `events/:id/replay`, `deliveries`, `deliveries/:id/replay`, `routes`, `routes/preview`, `routes/:id` (and `enable`, `disable`), `destinations`, `destinations/:id`, `destinations/:id/rotate-secret`, `revoke`. |
 
@@ -126,7 +138,7 @@ If you are not a member of the connection, or an id belongs to another connectio
 | `GET /metrics` | Prometheus text. See `docs/metrics.md`. |
 | `GET /healthz` | 200 when the DB answers |
 
-The worker serves `GET /metrics` and `GET /healthz` on `WORKER_METRICS_PORT`.
+The worker serves `GET /metrics` and `GET /healthz` on `WORKER_METRICS_PORT`, and the gateway on `GATEWAY_METRICS_PORT`.
 
 ## Admin CLIs
 
@@ -261,7 +273,7 @@ Reply with any 2xx. If the reply is JSON up to 64 KB, relay stores it on the del
 
 ## Actions
 
-A destination can act back on the Slack event it got: reply in the thread, react, update a message relay sent, or read the thread.
+A destination can act back on the Slack or Discord event it got: reply in the thread, react, update a message relay sent, or read the thread. The table shows Slack. See [Discord](#discord) for how each action works there.
 
 **Safety rule:** every action targets only the source event's context (its channel, thread, and message). A destination can never pick another channel, thread, or message. Extra params like `channel` are ignored.
 
@@ -318,6 +330,8 @@ Posts made with your user token look like your own messages. When an action post
 
 The echo can arrive before that row is committed. So if the event's actor is the connection's own user and nothing matched, the router waits 5 s and checks once more (`echo_recheck`), only for events under 30 s old. A message you send yourself that relay did not post (like a DM to yourself) is still routed after the recheck.
 
+On Discord, the gateway drops every message written by a bot, so Relay's own posts never become events. The router still checks `sent_messages` and the bot's user id, and skips the 5 s recheck.
+
 ## Point a Slack app at relay
 
 1. Create a Slack app. Copy its signing secret, client ID, and client secret into `.env`.
@@ -329,6 +343,36 @@ The echo can arrive before that row is committed. So if the event's actor is the
    - Set the Request URL to `$PUBLIC_URL/hooks/slack`. Relay answers the `url_verification` check.
    - Under "Subscribe to events on behalf of users", add `message.im`, `message.channels`, and `message.groups`. Add `tokens_revoked` as well (it needs no scope).
 5. Sign in to the console and press Connect Slack (or open `$PUBLIC_URL/oauth/slack/start`). Approve. Relay stores your user token, encrypted, in a connection you own, then sends you to its Routes page.
+
+## Discord
+
+A Discord connection is the Relay bot in one Discord server. The bot posts as itself. Discord has no way to post as a user. See [ADR 0008](docs/adr/0008-discord-gateway.md).
+
+What comes in:
+
+- Only messages that mention the bot (`discord.message.mention`) and DMs to the bot (`discord.message.dm`). Relay does not ask for the Message Content intent, and without it Discord sends no text for other messages.
+- Messages from bots and webhooks are dropped, including Relay's own.
+- A DM goes to every active connection you installed. DMs from anyone else are dropped.
+- If the bot is removed from the server, the connection becomes `revoked`.
+
+Actions work as in the table above, with these changes:
+
+- Every post sets `allowed_mentions: {parse: []}`, so nothing Relay sends pings `@everyone`, a role, or a person.
+- `reply` replies to the event message (`message_reference`). In a thread, it posts in that thread.
+- `react` takes `emoji`: a Unicode emoji like `👍`, or `name:id` for a custom one.
+- `update` takes `messageId`, the id of a message Relay sent.
+- `thread.history` returns `{messages: [{messageId, user, bot, text, timestamp}], hasMore}`, oldest first, from the event's channel or thread. Other people's messages that do not mention the bot have empty text.
+- Results have `messageId`, not `ts`.
+
+### Point a Discord app at relay
+
+1. Create a Discord app. Copy its client ID and client secret (OAuth2 page) and bot token (Bot page) into `.env`.
+2. On the Bot page, leave the privileged intents off. Relay needs none.
+3. On the OAuth2 page, add the redirect URL `$PUBLIC_URL/oauth/discord/callback`.
+4. Run `pnpm dev:gateway` next to the server and worker. Only one copy connects. A second one waits.
+5. Sign in to the console and press Add Discord server. Pick a server and approve. Relay checks the server named in Discord's token response and sends you to the new connection's Routes page.
+
+Restart the gateway with a delay of a minute or more. Each fresh start counts against Discord's limit of 1000 logins a day.
 
 ## Generic webhook
 

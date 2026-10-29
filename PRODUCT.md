@@ -8,7 +8,7 @@ web
 
 ## Users
 
-Relay has user accounts. Its first user is its owner, who runs it for their own Slack and webhook traffic. The owner intends to offer it as a product, so other users are technical people. They sign in with their own account, connect their own Slack accounts and services, and let Relay and its agents act on their behalf. Each user sees only their own connections.
+Relay has user accounts. Its first user is its owner, who runs it for their own Slack, Discord, and webhook traffic. The owner intends to offer it as a product, so other users are technical people. They sign in with their own account, connect their own Slack accounts, Discord servers, and services, and let Relay and its agents act on their behalf. Each user sees only their own connections.
 
 These users open the console in three situations:
 - **Something broke.** A delivery failed, an agent run went wrong, or an event didn't route, and they need the cause fast.
@@ -18,10 +18,10 @@ These users open the console in three situations:
 ## Product Purpose
 
 Relay is one place for events to come in and for actions to go back out:
-- **Sources connect in two ways.** OAuth providers (Slack first) and signed generic webhooks.
+- **Sources connect in two ways.** OAuth providers (Slack, and Discord through a bot) and signed generic webhooks.
 - **Every event is stored first, then processed.** It's checked and stored before anything else happens to it.
 - **Routes send events onward.** A route matches events to destinations: signed HTTP endpoints, or a Claude agent that runs inside Relay.
-- **Destinations can act back on the source.** They can reply in the original Slack thread or DM as the connected user, react, or read the thread.
+- **Destinations can act back on the source.** They can reply in the original Slack thread or DM as the connected user, or as the Relay bot in Discord, react, or read the thread.
 
 Success means the user stops worrying about the plumbing. Events arrive, get handled exactly once, and anything that fails is visible, explained, and replayable.
 
@@ -40,12 +40,12 @@ The console has to show these guarantees as facts the user can check.
 
 ## Operating Context
 
-- **Deployment:** self-hosted on Node 24 with Postgres. The server and worker are separate processes. Slack reaches the server through a public URL, such as a tunnel.
+- **Deployment:** self-hosted on Node 24 with Postgres. The server and worker are separate processes. Slack reaches the server through a public URL, such as a tunnel. Discord needs a third process, the gateway, which holds one socket open to Discord.
 - **The console:** a single-page web app at the server root. People sign in with an email and password. Sign-up is closed unless the operator opens it.
 - **Tenancy:** each connection is a tenant. Its routes, destinations, events, deliveries, actions, and agent runs belong to it alone. Users are members of connections (owner role only, for now). A new user's first step is adding a connection.
 - **What it covers:**
   - accounts: sign in, optional sign-up, and a switcher between your connections
-  - connections (Slack via OAuth, signed webhooks)
+  - connections (Slack via OAuth, Discord servers via a bot install, signed webhooks)
   - destinations (HTTP or agent)
   - routes, with a live match preview against recent events
   - an event log with full detail (envelope, raw payload, deliveries, actions, agent runs)

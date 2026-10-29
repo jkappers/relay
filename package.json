@@ -17,6 +17,7 @@
     "build:console": "pnpm --filter @relay/console build",
     "typecheck:console": "pnpm --filter @relay/console typecheck",
     "dev:worker": "pnpm --filter @relay/worker start",
+    "dev:gateway": "pnpm --filter @relay/gateway start",
     "check": "bash scripts/check.sh"
   },
   "devDependencies": {
