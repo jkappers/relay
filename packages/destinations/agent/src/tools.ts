@@ -13,11 +13,12 @@ import type { AgentToolDef, AgentToolResult } from './types'
 
 export const MAX_TOOL_RESULT_CHARS = 100_000
 
+// Fallbacks for actions whose runtime gives no description of its own. Slack's wording.
 const DESCRIPTIONS: Record<string, string> = {
   reply: 'Post a reply in the thread of the event, as the user.',
   post: 'Post a new message in the channel of the event (not in a thread), as the user.',
   react: 'Add an emoji reaction to the event message. Pass the emoji name without colons.',
-  update: 'Edit a message that Relay sent earlier. messageId is the ts of that message.',
+  update: 'Edit a message that Relay sent earlier. messageId is the id of that message (in Slack, its ts).',
   'thread.history': 'Read earlier messages in the thread of the event.',
 }
 
@@ -73,7 +74,7 @@ function idsOnly(result: unknown): unknown {
   if (!result || typeof result !== 'object') return undefined
   const o = result as Record<string, unknown>
   const out: Record<string, unknown> = {}
-  for (const k of ['channel', 'ts']) if (typeof o[k] === 'string') out[k] = o[k]
+  for (const k of ['channel', 'ts', 'messageId']) if (typeof o[k] === 'string') out[k] = o[k]
   return Object.keys(out).length ? out : undefined
 }
 
@@ -139,7 +140,7 @@ export async function createToolkit(deps: ToolkitDeps): Promise<Toolkit> {
     tools.push({
       name: toolNameForAction(action),
       action,
-      description: DESCRIPTIONS[action] ?? `Relay action ${action}.`,
+      description: def.description ?? DESCRIPTIONS[action] ?? `Relay action ${action}.`,
       shape,
       mutating: def.mutating,
       call(args) {
