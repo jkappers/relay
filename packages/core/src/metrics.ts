@@ -35,15 +35,47 @@ export class Counter<L extends string = never> {
   }
 }
 
+/** A value that goes up and down. No labels; a gateway connection is one thing. */
+export class Gauge {
+  private value = 0
+
+  constructor(
+    readonly name: string,
+    readonly help: string,
+  ) {}
+
+  set(value: number): void {
+    this.value = value
+  }
+
+  get(): number {
+    return this.value
+  }
+
+  render(): string {
+    return [`# HELP ${this.name} ${this.help}`, `# TYPE ${this.name} gauge`, `${this.name} ${this.value}`].join('\n')
+  }
+}
+
 export class MetricsRegistry {
-  private readonly counters = new Map<string, Counter<string>>()
+  private readonly counters = new Map<string, Counter<string> | Gauge>()
 
   counter<L extends string = never>(name: string, help: string, labelNames: readonly L[] = []): Counter<L> {
     const existing = this.counters.get(name)
+    if (existing instanceof Gauge) throw new Error(`${name} is a gauge`)
     if (existing) return existing as unknown as Counter<L>
     const counter = new Counter<L>(name, help, labelNames)
     this.counters.set(name, counter as unknown as Counter<string>)
     return counter
+  }
+
+  gauge(name: string, help: string): Gauge {
+    const existing = this.counters.get(name)
+    if (existing && !(existing instanceof Gauge)) throw new Error(`${name} is a counter`)
+    if (existing) return existing
+    const gauge = new Gauge(name, help)
+    this.counters.set(name, gauge)
+    return gauge
   }
 
   render(): string {

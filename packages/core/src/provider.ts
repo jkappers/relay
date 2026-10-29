@@ -2,7 +2,7 @@ import type { z } from 'zod'
 import type { Credentials } from './connections'
 import type { Envelope } from './envelope'
 
-export type ProviderId = 'slack' | 'webhook' | 'sms'
+export type ProviderId = 'slack' | 'webhook' | 'sms' | 'discord'
 export type ConnectionStatus = 'active' | 'revoked'
 
 export interface Connection {
@@ -48,6 +48,7 @@ export interface OAuthConfig {
   userScopes: readonly string[]
 }
 
+/** A provider that delivers events over signed HTTP requests to /hooks/*. */
 export interface ProviderAdapter {
   id: ProviderId
   oauth?: OAuthConfig
@@ -65,6 +66,37 @@ export interface ProviderAdapter {
   dedupKey(input: ResolvedInput): string
   /** Envelope without `raw`; raw lives in events.raw. */
   normalize(input: NormalizeInput): Omit<Envelope, 'raw'>
+}
+
+/** One event from a provider's persistent socket (e.g. a Discord Gateway dispatch). The socket is authenticated, so there is no signature. */
+export interface GatewayDispatch {
+  /** Event name, e.g. MESSAGE_CREATE. */
+  t: string
+  d: unknown
+}
+
+export interface GatewayNormalizeInput {
+  dispatch: GatewayDispatch
+  connection: Connection
+  eventId: string
+  receivedAt: Date
+}
+
+export type GatewayLifecycleResult = { kind: 'revoked'; count: number }
+
+export type GatewayResolution =
+  | { kind: 'ignore'; reason: string }
+  | { kind: 'ingest'; connections: Connection[]; reason?: string }
+
+/** A provider that delivers events over a persistent socket held by apps/gateway. */
+export interface GatewayAdapter {
+  id: ProviderId
+  /** Provider control events (e.g. Discord GUILD_DELETE). Returns null when the dispatch is not one. */
+  lifecycle?(dispatch: GatewayDispatch): Promise<GatewayLifecycleResult | null>
+  /** Which connections get this event. An empty list with `reason` means no connection matched. */
+  resolveConnections(dispatch: GatewayDispatch): Promise<GatewayResolution>
+  dedupKey(dispatch: GatewayDispatch, connection: Connection): string
+  normalize(input: GatewayNormalizeInput): Omit<Envelope, 'raw'>
 }
 
 export class ActionError extends Error {
@@ -93,6 +125,8 @@ export interface ActionOutput {
 
 export interface ActionDef<S extends z.ZodType = z.ZodType> {
   mutating: boolean
+  /** Tool description for agents. Falls back to a generic one per action name. */
+  description?: string
   params: S
   run(ctx: ActionContext, params: z.output<S>): Promise<ActionOutput>
 }
@@ -106,6 +140,11 @@ export interface ProviderRuntime {
   id: ProviderId
   actions: Record<string, ActionDef>
   isSelfEcho(envelope: Envelope, connection: Connection): Promise<boolean>
+  /**
+   * The router waits and checks isSelfEcho again when the actor is the connection's own user, because the echo can
+   * arrive before sent_messages is written. False for providers whose own posts never reach ingest (Discord bot).
+   */
+  echoRecheck?: boolean
 }
 
 /** Destination allow-list (null = all) intersected with what the runtime offers. */

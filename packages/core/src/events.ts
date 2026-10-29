@@ -1,5 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm'
-import { QUEUES, schema, type Db, type Queue, type RouteJob, type Tx } from '@relay/core'
+import type { Db, Tx } from './db/client'
+import * as schema from './db/schema'
+import { QUEUES, type Queue, type RouteJob } from './queue'
 
 export interface NewEvent {
   id: string
@@ -20,6 +22,7 @@ async function enqueue(tx: Tx, queue: Queue, eventId: string) {
   await tx.update(schema.events).set({ enqueuedAt: sql`now()` }).where(eq(schema.events.id, eventId))
 }
 
+/** Stores an event once per (provider, dedup key) and queues a route job in the same transaction. */
 export async function storeAndEnqueue(db: Db, queue: Queue, event: NewEvent): Promise<StoreResult> {
   return db.transaction(async (tx) => {
     const inserted = await tx
