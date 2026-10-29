@@ -33,7 +33,7 @@ export const setTenant = (id: string | null) => {
 }
 export const currentTenant = () => tenant
 
-const ACCOUNT_PATH = /^\/api\/(session|users|connections|tokens|c\/)/
+const ACCOUNT_PATH = /^\/api\/(session|users|connections|tokens|admin\/|c\/)/
 
 export function apiPath(path: string): string {
   if (!path.startsWith('/api/') || ACCOUNT_PATH.test(path)) return path
@@ -80,9 +80,10 @@ export interface Connection {
 export type SignupMode = 'open' | 'closed'
 
 export interface Session {
-  user: { id: string; email: string }
+  user: { id: string; email: string; isAdmin: boolean }
   connections: Connection[]
   signup: SignupMode
+  adminExists: boolean
 }
 
 /** OAuth start URLs for the installs the server is set up for. Null when the app settings are missing. */

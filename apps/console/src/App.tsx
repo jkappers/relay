@@ -6,10 +6,11 @@ import { Icon, RelayMark, type IconName } from './icons'
 import { Onboarding } from './pages/Onboarding'
 import { jackCode, lineLabel } from './patch'
 import { Lamp } from './trace'
-import { Connections } from './pages/Connections'
+import { Connections, type Viewer } from './pages/Connections'
 import { Deliveries } from './pages/Deliveries'
 import { Destinations } from './pages/Destinations'
 import { EventPanel, Events } from './pages/Events'
+import { Integrations } from './pages/Integrations'
 import { Login } from './pages/Login'
 import { Overview } from './pages/Overview'
 import { Routes } from './pages/Routes'
@@ -24,10 +25,10 @@ const NAV: readonly (readonly [string, string, IconName])[] = [
   ['/destinations', 'Destinations', 'jack'],
 ]
 
-function view(path: string, open: string | null) {
+function view(path: string, open: string | null, viewer: Viewer) {
   switch (path) {
     case '/connections':
-      return <Connections />
+      return <Connections viewer={viewer} />
     case '/destinations':
       return <Destinations />
     case '/routes':
@@ -117,7 +118,13 @@ export function App() {
   const { connectionId: pathTenant, inner } = splitTenant(path)
   const [session, setSession] = useState<Session | null>(null)
   const [signup, setSignup] = useState<SignupMode>('closed')
-  const tenant = session?.connections.find((c) => c.id === pathTenant) ?? null
+  const account = path === '/settings' && session?.user.isAdmin === true
+  const lastTenant = useRef<string | null>(null)
+  const pathConnection = session?.connections.find((c) => c.id === pathTenant) ?? null
+  if (pathConnection) lastTenant.current = pathConnection.id
+  const tenant = account
+    ? (session?.connections.find((c) => c.id === lastTenant.current) ?? session?.connections[0] ?? null)
+    : pathConnection
   setTenant(tenant?.id ?? null)
   const { base, event } = parseRoute(inner)
   const fromList = useRef(false)
@@ -164,6 +171,10 @@ export function App() {
   useEffect(() => {
     if (authed === false && path !== '/login') navigate('/login')
     if (authed !== true || !session) return
+    if (path === '/settings') {
+      if (!session.user.isAdmin) navigate(first ? `/c/${first.id}` : '/')
+      return
+    }
     if (!first) {
       if (path !== '/') navigate('/')
       return
@@ -206,8 +217,9 @@ export function App() {
     navigate('/login')
   }
 
-  if (session && session.connections.length === 0) return <Onboarding email={session.user.email} onSignOut={signOut} />
-  if (!session || !tenant) {
+  const viewer: Viewer = { isAdmin: session?.user.isAdmin === true, adminExists: session?.adminExists === true }
+  if (session && session.connections.length === 0 && !account) return <Onboarding email={session.user.email} viewer={viewer} onSignOut={signOut} />
+  if (!session || (!tenant && !account)) {
     return (
       <p role="status" className="p-6 text-sm text-ink-2">
         Opening connection…
@@ -240,12 +252,20 @@ export function App() {
               <Icon name={menuOpen ? 'close' : 'menu'} />
             </button>
           </div>
-          <div className={cx('md:block', menuOpen ? 'block' : 'hidden')}>
-            <Switcher connections={session.connections} current={tenant} />
-          </div>
+          {tenant ? (
+            <div className={cx('md:block', menuOpen ? 'block' : 'hidden')}>
+              <Switcher connections={session.connections} current={tenant} />
+            </div>
+          ) : null}
           <div id="rail-nav" className={cx('flex-1 flex-col justify-between gap-6 px-2 pb-3 md:flex', menuOpen ? 'flex' : 'hidden')}>
             <nav aria-label="Main">
-              <ul className="flex flex-col gap-px">
+              {tenant ? null : (
+                <a href="#/" className="flex h-7 items-center gap-2.5 rounded-ctl px-2 font-medium text-ink-2 no-underline hover:bg-hover hover:text-ink">
+                  <Icon name="plus" className="size-4 text-ink-3" />
+                  Add a connection
+                </a>
+              )}
+              <ul className={cx('flex flex-col gap-px', !tenant && 'hidden')}>
                 {NAV.map(([p, label, icon]) => (
                   <li key={p}>
                     <a
@@ -264,6 +284,19 @@ export function App() {
               </ul>
             </nav>
             <div className="flex flex-col gap-2 border-t border-rule pt-3">
+              {viewer.isAdmin ? (
+                <a
+                  href="#/settings"
+                  aria-current={account ? 'page' : undefined}
+                  className={cx(
+                    'flex h-7 items-center gap-2.5 rounded-ctl px-2 font-medium no-underline',
+                    account ? 'bg-hover text-ink hover:text-ink' : 'text-ink-2 hover:bg-hover hover:text-ink',
+                  )}
+                >
+                  <Icon name="settings" className={cx('size-4', account ? 'text-accent' : 'text-ink-3')} />
+                  Settings
+                </a>
+              ) : null}
               <p className="truncate px-2 text-xs text-ink-3" title={session.user.email}>
                 {session.user.email}
               </p>
@@ -276,12 +309,12 @@ export function App() {
           </div>
         </header>
       </div>
-      <main id="main" tabIndex={-1} className={cx('min-w-0 px-4 py-3 outline-none md:px-6 md:py-4', event && 'xl:mr-panel')}>
-        <div key={tenant.id} className="mx-auto max-w-[90rem]">
-          {view(base, event)}
+      <main id="main" tabIndex={-1} className={cx('min-w-0 px-4 py-3 outline-none md:px-6 md:py-4', event && !account && 'xl:mr-panel')}>
+        <div key={account ? 'account' : tenant?.id} className="mx-auto max-w-[90rem]">
+          {account ? <Integrations /> : view(base, event, viewer)}
         </div>
       </main>
-      {event ? <EventPanel key={tenant.id} id={event} onClose={closePanel} /> : null}
+      {event && tenant && !account ? <EventPanel key={tenant.id} id={event} onClose={closePanel} /> : null}
     </div>
   )
 }

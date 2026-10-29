@@ -95,6 +95,13 @@ const paths = {
     </>
   ),
   trash: <path d="M4 7h16M10 7V4h4v3M6 7l1 13h10l1-13" />,
+  settings: (
+    <>
+      <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+      <circle cx="15" cy="7" r="2" />
+      <circle cx="9" cy="17" r="2" />
+    </>
+  ),
   external: (
     <>
       <path d="M14 4h6v6M20 4l-9 9" />

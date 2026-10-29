@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import type { WebhookCreated } from '../api'
 import { Icon, RelayMark } from '../icons'
-import { connectionsChanged, NewWebhook, useInstalls, WebhookSecret } from './Connections'
+import { connectionsChanged, NewWebhook, SetupHint, useInstalls, WebhookSecret, type Viewer } from './Connections'
 
-export function Onboarding({ email, onSignOut }: { email: string; onSignOut: () => void }) {
+export function Onboarding({ email, viewer, onSignOut }: { email: string; viewer: Viewer; onSignOut: () => void }) {
   const [created, setCreated] = useState<WebhookCreated | null>(null)
   const installs = useInstalls()
 
@@ -16,6 +16,12 @@ export function Onboarding({ email, onSignOut }: { email: string; onSignOut: () 
         </span>
         <span className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 truncate text-xs text-ink-3">{email}</span>
+          {viewer.isAdmin ? (
+            <a className="btn btn-quiet btn-sm" href="#/settings">
+              <Icon name="settings" className="size-3.5" />
+              Settings
+            </a>
+          ) : null}
           <button type="button" className="btn btn-quiet btn-sm" onClick={onSignOut}>
             <Icon name="exit" className="size-3.5" />
             Sign out
@@ -33,7 +39,7 @@ export function Onboarding({ email, onSignOut }: { email: string; onSignOut: () 
           </div>
         ) : (
           <div className="mt-4 flex flex-col divide-y divide-rule border-y border-rule">
-            {installs.slack ? (
+            {installs ? (
               <section aria-labelledby="slack-title" className="flex flex-wrap items-center justify-between gap-3 py-4">
                 <div className="min-w-0">
                   <h2 id="slack-title" className="font-semibold">
@@ -41,13 +47,17 @@ export function Onboarding({ email, onSignOut }: { email: string; onSignOut: () 
                   </h2>
                   <p className="text-ink-2">Sign in with Slack. Relay gets your messages and can reply as you.</p>
                 </div>
-                <a className="btn" href="/oauth/slack/start">
-                  <Icon name="external" className="size-3.5" />
-                  Connect Slack
-                </a>
+                {installs.slack ? (
+                  <a className="btn" href="/oauth/slack/start">
+                    <Icon name="external" className="size-3.5" />
+                    Connect Slack
+                  </a>
+                ) : (
+                  <SetupHint provider="slack" viewer={viewer} />
+                )}
               </section>
             ) : null}
-            {installs.discord ? (
+            {installs ? (
               <section aria-labelledby="discord-title" className="flex flex-wrap items-center justify-between gap-3 py-4">
                 <div className="min-w-0">
                   <h2 id="discord-title" className="font-semibold">
@@ -55,10 +65,14 @@ export function Onboarding({ email, onSignOut }: { email: string; onSignOut: () 
                   </h2>
                   <p className="text-ink-2">Add the Relay bot to a server. It gets DMs and messages that mention it, and replies as the bot.</p>
                 </div>
-                <a className="btn" href="/oauth/discord/start">
-                  <Icon name="external" className="size-3.5" />
-                  Add Discord server
-                </a>
+                {installs.discord ? (
+                  <a className="btn" href="/oauth/discord/start">
+                    <Icon name="external" className="size-3.5" />
+                    Add Discord server
+                  </a>
+                ) : (
+                  <SetupHint provider="discord" viewer={viewer} />
+                )}
               </section>
             ) : null}
             <section aria-labelledby="webhook-title" className="flex flex-col gap-2 py-4">

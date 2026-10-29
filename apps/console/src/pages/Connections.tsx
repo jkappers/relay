@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { CONNECTIONS_CHANGED_EVENT, get, post, type Connection, type InstallUrls, type SmsCreated, type WebhookCreated } from '../api'
 import { Async, ConfirmButton, CopyId, cx, Empty, Field, FormError, Page, SecretBox, SkeletonRows, Time } from '../components'
 import { errorText, useLoad } from '../hooks'
+import { PROVIDER_NAME, setupHint, type ProviderId } from '../integrations'
 import { Icon } from '../icons'
 import { jackCode, lineLabel } from '../patch'
 import { StatusMark } from '../trace'
@@ -13,17 +14,27 @@ export const INSTALLS = [
   { id: 'discord', label: 'Add Discord server' },
 ] as const
 
-/** OAuth installs the server has app settings for. Empty until loaded or if the call fails. */
-export function useInstalls(): InstallUrls {
-  const state = useLoad(() => get<InstallUrls>('/api/connections/providers'), [])
-  return state.data ?? { slack: null, discord: null }
+export interface Viewer {
+  isAdmin: boolean
+  adminExists: boolean
 }
 
-export function InstallLinks({ installs, small }: { installs: InstallUrls; small?: boolean }) {
+/** OAuth installs the server has app settings for. Null until loaded or if the call fails. Reloads when settings or connections change. */
+export function useInstalls(): InstallUrls | null {
+  const state = useLoad(() => get<InstallUrls>('/api/connections/providers'), [])
+  const { reload } = state
+  useEffect(() => {
+    window.addEventListener(CONNECTIONS_CHANGED_EVENT, reload)
+    return () => window.removeEventListener(CONNECTIONS_CHANGED_EVENT, reload)
+  }, [reload])
+  return state.data
+}
+
+export function InstallLinks({ installs, small }: { installs: InstallUrls | null; small?: boolean }) {
   return (
     <>
       {INSTALLS.map((i) =>
-        installs[i.id] ? (
+        installs?.[i.id] ? (
           <a key={i.id} className={cx('btn', small && 'btn-sm')} href={`/oauth/${i.id}/start`}>
             <Icon name="external" className="size-3.5" />
             {i.label}
@@ -31,6 +42,47 @@ export function InstallLinks({ installs, small }: { installs: InstallUrls; small
         ) : null,
       )}
     </>
+  )
+}
+
+export function SetupHint({ provider, viewer }: { provider: ProviderId; viewer: Viewer }) {
+  const name = PROVIDER_NAME[provider]
+  const hint = setupHint(viewer)
+  if (hint === 'set_up') {
+    return (
+      <a className="btn" href="#/settings">
+        <Icon name="settings" className="size-3.5" />
+        Set up {name}
+      </a>
+    )
+  }
+  return (
+    <p className="text-xs text-ink-3">
+      {hint === 'ask_admin' ? (
+        <>Ask your admin to set up {name}.</>
+      ) : (
+        <>
+          No one can set up {name} yet. Ask the person who installed Relay to run <code>users:grant-admin</code>.
+        </>
+      )}
+    </p>
+  )
+}
+
+/** Providers that are not set up, each with what this viewer can do about it. */
+export function SetupHints({ installs, viewer }: { installs: InstallUrls | null; viewer: Viewer }) {
+  if (!installs) return null
+  const missing = INSTALLS.filter((i) => !installs[i.id])
+  if (missing.length === 0) return null
+  return (
+    <ul aria-label="Not set up yet" className="flex flex-col divide-y divide-rule border-y border-rule">
+      {missing.map((i) => (
+        <li key={i.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-3 py-2">
+          <span className="text-ink-2">{PROVIDER_NAME[i.id]} isn’t set up yet.</span>
+          <SetupHint provider={i.id} viewer={viewer} />
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -171,7 +223,7 @@ export function SmsWebhookUrl({ created, onDismiss }: { created: SmsCreated; onD
 
 const COLS ='grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 px-3 md:grid-cols-[minmax(0,10rem)_6rem_minmax(0,9rem)_minmax(0,1fr)_6rem_minmax(0,auto)]'
 
-export function Connections() {
+export function Connections({ viewer }: { viewer: Viewer }) {
   const state = useLoad(() => get<{ items: Connection[] }>('/api/connections'), [])
   const [created, setCreated] = useState<WebhookCreated | null>(null)
   const [createdSms, setCreatedSms] = useState<SmsCreated | null>(null)
@@ -221,6 +273,7 @@ export function Connections() {
           />
         </div>
       ) : null}
+      <SetupHints installs={installs} viewer={viewer} />
       {created ? <WebhookSecret created={created} onDismiss={() => setCreated(null)} /> : null}
       {createdSms ? <SmsWebhookUrl created={createdSms} onDismiss={() => setCreatedSms(null)} /> : null}
       <Async
