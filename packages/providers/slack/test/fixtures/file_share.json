@@ -1,0 +1,54 @@
+{
+  "token": "XXYYZZ",
+  "team_id": "T123ABC456",
+  "api_app_id": "A123ABC456",
+  "event": {
+    "type": "message",
+    "subtype": "file_share",
+    "text": "We got one!",
+    "files": [
+      {
+        "id": "F0RDC39U1",
+        "created": 1529342081,
+        "timestamp": 1529342081,
+        "name": "ghostrap.png",
+        "title": "ghostrap.png",
+        "mimetype": "image/png",
+        "filetype": "png",
+        "pretty_type": "PNG",
+        "user": "U061F7AUR",
+        "editable": false,
+        "size": 196920,
+        "mode": "hosted",
+        "is_external": false,
+        "external_type": "",
+        "is_public": false,
+        "public_url_shared": false,
+        "display_as_bot": false,
+        "username": "",
+        "url_private": "https://files.slack.com/files-pri/T061EG9R6-F0RDC39U1/ghostrap.png",
+        "permalink": "https://episod-slackform.slack.com/files/U061F7AUR/F0RDC39U1/ghostrap.png",
+        "has_rich_preview": false
+      }
+    ],
+    "user": "U123ABC456",
+    "upload": true,
+    "display_as_bot": false,
+    "bot_id": null,
+    "ts": "1529342088.000086",
+    "channel": "D0L4B9P0Q",
+    "event_ts": "1529342088.000086",
+    "channel_type": "im"
+  },
+  "type": "event_callback",
+  "authorizations": [
+    {
+      "team_id": "T123ABC456",
+      "is_bot": false,
+      "is_enterprise_install": false,
+      "user_id": "U123ABC456"
+    }
+  ],
+  "event_id": "Ev123ABC456",
+  "event_time": 123456789
+}

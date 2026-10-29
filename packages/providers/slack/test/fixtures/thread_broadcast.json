@@ -1,0 +1,78 @@
+{
+  "token": "XXYYZZ",
+  "team_id": "T123ABC456",
+  "api_app_id": "A123ABC456",
+  "event": {
+    "type": "message",
+    "subtype": "thread_broadcast",
+    "text": "broadcasting this reply",
+    "user": "U123ABC456",
+    "ts": "1673464745.620769",
+    "thread_ts": "1673464730.703009",
+    "root": {
+      "client_msg_id": "123abc456-...",
+      "type": "message",
+      "text": "This is the original message",
+      "user": "U123ABC456",
+      "ts": "1673464730.703009",
+      "blocks": [
+        {
+          "type": "rich_text",
+          "block_id": "qTg",
+          "elements": [
+            {
+              "type": "rich_text_section",
+              "elements": [
+                {
+                  "type": "text",
+                  "text": "This is the original message"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "team": "T123ABC456",
+      "thread_ts": "1673464730.703009",
+      "reply_count": 1,
+      "reply_users_count": 1,
+      "latest_reply": "1673464745.620769",
+      "reply_users": [
+        "U123ABC456"
+      ],
+      "is_locked": false
+    },
+    "blocks": [
+      {
+        "type": "rich_text",
+        "block_id": "BVp",
+        "elements": [
+          {
+            "type": "rich_text_section",
+            "elements": [
+              {
+                "type": "text",
+                "text": "broadcasting this reply"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "client_msg_id": "123abc456-...",
+    "channel": "C123ABC456",
+    "event_ts": "1673464745.620769",
+    "channel_type": "channel"
+  },
+  "type": "event_callback",
+  "authorizations": [
+    {
+      "team_id": "T123ABC456",
+      "is_bot": false,
+      "is_enterprise_install": false,
+      "user_id": "U123ABC456"
+    }
+  ],
+  "event_id": "Ev123ABC456",
+  "event_time": 123456789
+}
