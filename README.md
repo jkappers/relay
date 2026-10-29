@@ -61,7 +61,7 @@ pnpm dev:worker
 pnpm dev:gateway              # only if you use Discord
 ```
 
-Then sign in. With no connections yet, the console asks you to add one: connect Slack, add a Discord server, or create a signed webhook. Slack and Discord show up only when their app settings are in `.env`.
+Then sign in. As an admin, open **Settings** in the rail (or in the header before you have connections) and follow the steps on the Slack and Discord cards to set up each app. With no connections yet, the console asks you to add one: connect Slack, add a Discord server, or create a signed webhook. Connect Slack and Add Discord server show up for everyone once that provider is Ready. Until then, admins see a Set up link, other users see "Ask your admin to set up ...", and if no admin exists yet the console says to run `users:grant-admin`.
 
 Run all checks (install, typecheck, migration drift, tests):
 
@@ -135,7 +135,7 @@ Console API. Everything needs a session except signing in and signing up.
 | Route | Purpose |
 |---|---|
 | `POST /api/session` | Sign in with `{email, password}`. Sets the session cookie. |
-| `GET /api/session` | `{user, connections, signup}`. Signed out, it answers 401 with `signup`. |
+| `GET /api/session` | `{user, connections, signup, adminExists}`. `user.isAdmin` marks an instance admin. Signed out, it answers 401 with `signup`. |
 | `DELETE /api/session` | Sign out. The session row is deleted. |
 | `POST /api/users` | Sign up with `{email, password}`. Only when `SIGNUP_MODE=open`. |
 | `GET /api/connections` | Your connections and your role in each. |
@@ -225,7 +225,19 @@ Security notes:
 - Event text comes from other people. The UI only shows it as plain text, and the page runs under a strict Content-Security-Policy.
 - Details are in `docs/adr/0005-console.md`.
 
-Instance admins (granted only by `users:create --admin` or `users:grant-admin`) also get `/api/admin/integrations`: the shared Slack and Discord app settings, a Test button per provider, and the redirect and event URLs to paste into each developer portal. Others get 404 there. Secrets are write-only: the API reports whether each is set, never its value. Changing the client id (or a Discord bot token from another app) while connections exist needs `confirmClientIdChange: true`, since every existing connection of that provider stops working. See [ADR 0011](docs/adr/0011-instance-admins-and-provider-apps.md).
+Instance admins (granted only by `users:create --admin` or `users:grant-admin`) see a **Settings** item in the rail. It is an account-level page at `#/settings`, outside any connection, so it works before the admin has connections. Other users don't see it, and opening the URL sends them back. It has one card per provider with:
+
+- a badge (Ready, Needs setup, Problem) and where the settings come from (From server environment, Set in Relay), plus the connection count;
+- a numbered setup guide with portal links and copy buttons for the redirect and event addresses. For Slack, a link creates the app from a manifest with Relay's scopes, events, and addresses filled in. Paste the secrets into Relay and save first, then click Retry on Slack's Event Subscriptions page. The guide also covers Public Distribution;
+- the form. Secrets are password fields that are never filled in. A saved secret shows "Set on <date> by <email>", and leaving it blank keeps it. The first save in Relay needs every secret, even if the server environment has them. "Advanced" sets who can connect: anyone with a Relay account, or only listed Slack or Discord member IDs;
+- status: the Discord bot's state from the gateway (online, reconnecting, rejected token with its close code), and the last time Relay accepted a signed Slack request;
+- a Test button (runs only when clicked), Remove (go back to the server environment settings), and a warning when `PUBLIC_URL` is not https or points at this machine.
+
+Changing the client ID while connections exist opens a dialog: type the provider name to confirm that those connections will stop working.
+
+`GET /api/session` returns `user.isAdmin` and `adminExists` (whether any admin exists), which the console uses for these hints.
+
+The API behind it is `/api/admin/integrations`: the shared Slack and Discord app settings, a Test button per provider, and the redirect and event URLs to paste into each developer portal. Others get 404 there. Secrets are write-only: the API reports whether each is set, never its value. Changing the client id (or a Discord bot token from another app) while connections exist needs `confirmClientIdChange: true`, since every existing connection of that provider stops working. See [ADR 0011](docs/adr/0011-instance-admins-and-provider-apps.md).
 
 ## Agents
 
@@ -406,6 +418,8 @@ On Discord, the gateway drops every message written by a bot, so Relay's own pos
 
 ## Point a Slack app at relay
 
+The easy way: as an admin, open Settings in the console and follow the Slack card. The steps below are the manual way, with env vars.
+
 1. Create a Slack app. Copy its signing secret, client ID, and client secret into `.env`.
 2. Expose the server over HTTPS and set `PUBLIC_URL` to that address.
 3. **OAuth & Permissions**
@@ -437,6 +451,8 @@ Actions work as in the table above, with these changes:
 - Results have `messageId`, not `ts`.
 
 ### Point a Discord app at relay
+
+The easy way: as an admin, open Settings in the console and follow the Discord card. The steps below are the manual way, with env vars.
 
 1. Create a Discord app. Copy its client ID and client secret (OAuth2 page) and bot token (Bot page) into `.env`.
 2. On the Bot page, leave the privileged intents off. Relay needs none.
