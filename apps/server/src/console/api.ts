@@ -136,11 +136,18 @@ interface EventTrace {
   failedDelivery: { id: string; lastError: string | null } | null
 }
 
-const eventsQuery = z.object({
+const FACETS = ['failed', 'pending', 'unrouted', 'echo', 'ok'] as const
+type Facet = (typeof FACETS)[number]
+
+const facetsQuery = z.object({
   provider: z.string().min(1).optional(),
   connectionId: z.uuid().optional(),
   type: z.string().min(1).optional(),
   since: z.iso.datetime({ offset: true }).optional(),
+})
+
+const eventsQuery = facetsQuery.extend({
+  outcome: z.enum(FACETS).optional(),
   cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 })
@@ -423,18 +430,66 @@ export function consoleApi(deps: ConsoleApiDeps) {
     })
   }
 
-  api.get('/events', validated('query', eventsQuery), async (c) => {
-    const q = c.req.valid('query') as z.output<typeof eventsQuery>
+  const routedState = sql`case
+            when ${events.routedAt} is null then 'pending'
+            when ${connections.status} is distinct from 'active' then 'inactive'
+            when ${events.provider} = 'slack' and exists (
+              select 1 from sent_messages s
+              where s.connection_id = events.connection_id
+                and s.channel = ${events.envelope}->'context'->>'channelId'
+                and s.ts = ${events.envelope}->'context'->>'messageId'
+            ) then 'echo'
+            when exists (select 1 from deliveries d where d.event_id = events.id) then 'routed'
+            else 'unmatched'
+          end`
+  const has = (status: string) => sql`(
+        exists (select 1 from deliveries d where d.event_id = events.id and d.status = ${status})
+        or exists (select 1 from actions_log a join deliveries d on d.id = a.delivery_id where d.event_id = events.id and a.status = ${status})
+      )`
+  const failed = has('failed')
+  const settled = sql`not ${failed} and not ${has('pending')}`
+  const facets: Record<Facet, SQL> = {
+    failed,
+    pending: sql`not ${failed} and (${events.routedAt} is null or ${has('pending')})`,
+    unrouted: sql`${settled} and ${events.routedAt} is not null and ${routedState} in ('unmatched', 'inactive')`,
+    echo: sql`${settled} and ${events.routedAt} is not null and ${routedState} = 'echo'`,
+    ok: sql`${settled} and ${routedState} = 'routed'`,
+  }
+  const filterConds = (q: z.output<typeof facetsQuery>) => {
     const conds: SQL[] = []
     if (q.provider) conds.push(eq(events.provider, q.provider))
     if (q.connectionId) conds.push(eq(events.connectionId, q.connectionId))
     if (q.type) conds.push(sql`starts_with(${events.envelope}->>'type', ${q.type})`)
     if (q.since) conds.push(sql`${events.receivedAt} >= ${q.since}::timestamptz`)
+    return conds
+  }
+
+  api.get('/events/facets', validated('query', facetsQuery), async (c) => {
+    const conds = filterConds(c.req.valid('query') as z.output<typeof facetsQuery>)
+    const [row] = await db
+      .select({
+        all: sql<number>`count(*)::int`,
+        failed: sql<number>`(count(*) filter (where ${facets.failed}))::int`,
+        pending: sql<number>`(count(*) filter (where ${facets.pending}))::int`,
+        unrouted: sql<number>`(count(*) filter (where ${facets.unrouted}))::int`,
+        echo: sql<number>`(count(*) filter (where ${facets.echo}))::int`,
+        ok: sql<number>`(count(*) filter (where ${facets.ok}))::int`,
+      })
+      .from(events)
+      .leftJoin(connections, eq(connections.id, events.connectionId))
+      .where(conds.length ? and(...conds) : undefined)
+    return c.json(row)
+  })
+
+  api.get('/events', validated('query', eventsQuery), async (c) => {
+    const q = c.req.valid('query') as z.output<typeof eventsQuery>
+    const conds = filterConds(q)
     if (q.cursor) {
       const cursor = decodeCursor(q.cursor)
       if (!cursor) return c.json({ error: 'validation', issues: [fail(['cursor'], 'invalid cursor')] }, 400)
       conds.push(sql`(${events.receivedAt}, ${events.id}) < (${cursor[0]}::timestamptz, ${cursor[1]}::uuid)`)
     }
+    if (q.outcome) conds.push(facets[q.outcome])
     const rows = await db
       .select({
         id: events.id,
@@ -450,18 +505,7 @@ export function consoleApi(deps: ConsoleApiDeps) {
         deliveryCount: sql<number>`(select count(*)::int from deliveries d where d.event_id = events.id)`,
         failedCount: sql<number>`(select count(*)::int from deliveries d where d.event_id = events.id and d.status = 'failed')`,
         trace: sql<EventTrace>`json_build_object(
-          'routed', case
-            when ${events.routedAt} is null then 'pending'
-            when ${connections.status} is distinct from 'active' then 'inactive'
-            when ${events.provider} = 'slack' and exists (
-              select 1 from sent_messages s
-              where s.connection_id = events.connection_id
-                and s.channel = ${events.envelope}->'context'->>'channelId'
-                and s.ts = ${events.envelope}->'context'->>'messageId'
-            ) then 'echo'
-            when exists (select 1 from deliveries d where d.event_id = events.id) then 'routed'
-            else 'unmatched'
-          end,
+          'routed', ${routedState},
           'deliveries', (
             select json_build_object(
               'pending', count(*) filter (where d.status = 'pending')::int,
