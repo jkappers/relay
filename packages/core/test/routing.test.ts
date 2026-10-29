@@ -9,13 +9,15 @@ const route = (o: Partial<RouteMatchFields> = {}): RouteMatchFields => ({
   textContains: null,
   textRegex: null,
   includeSubtypes: false,
+  actorIn: null,
   ...o,
 })
-const env = (o: Partial<{ type: string; subtype: string | null; text: string | null; connectionId: string }> = {}) => ({
+const env = (o: Partial<{ type: string; subtype: string | null; text: string | null; connectionId: string; actor: string | null }> = {}) => ({
   connectionId: CONN,
   type: 'slack.message.im',
   subtype: null,
   text: 'Deploy finished',
+  actor: 'U_ALICE',
   ...o,
 })
 
@@ -53,6 +55,38 @@ describe('matchRoute', () => {
     expect(matchRoute(route(), env({ subtype: 'message_changed' }))).toBe(false)
     expect(matchRoute(route({ includeSubtypes: true }), env({ subtype: 'message_changed' }))).toBe(true)
     expect(matchRoute(route({ includeSubtypes: true }), env())).toBe(true)
+  })
+
+  describe('actorIn', () => {
+    it('matches when the actor is in the list', () => {
+      expect(matchRoute(route({ actorIn: ['U_BOB', 'U_ALICE'] }), env())).toBe(true)
+    })
+
+    it('does not match an actor outside the list', () => {
+      expect(matchRoute(route({ actorIn: ['U_BOB'] }), env())).toBe(false)
+    })
+
+    it('compares exactly, with no case folding or prefix match', () => {
+      expect(matchRoute(route({ actorIn: ['u_alice'] }), env())).toBe(false)
+      expect(matchRoute(route({ actorIn: ['U_ALI'] }), env())).toBe(false)
+      expect(matchRoute(route({ actorIn: ['U_ALICE '] }), env())).toBe(false)
+    })
+
+    it('never matches an event with no actor when a list is set', () => {
+      expect(matchRoute(route({ actorIn: ['U_ALICE'] }), env({ actor: null }))).toBe(false)
+      expect(matchRoute(route({ actorIn: [''] }), env({ actor: null }))).toBe(false)
+    })
+
+    it('treats an empty or absent list as no restriction', () => {
+      expect(matchRoute(route({ actorIn: [] }), env())).toBe(true)
+      expect(matchRoute(route({ actorIn: null }), env())).toBe(true)
+      expect(matchRoute(route({ actorIn: null }), env({ actor: null }))).toBe(true)
+    })
+
+    it('still needs the other filters to match', () => {
+      expect(matchRoute(route({ actorIn: ['U_ALICE'], textContains: 'nope' }), env())).toBe(false)
+      expect(matchRoute(route({ actorIn: ['U_ALICE'], enabled: false }), env())).toBe(false)
+    })
   })
 
   it('never matches a disabled route', () => {

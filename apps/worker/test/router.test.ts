@@ -71,6 +71,19 @@ describe('router', () => {
     expect(await h.db.select().from(schema.deliveries)).toHaveLength(0)
   })
 
+  it('delivers an actorIn route only for listed actors', async () => {
+    const a = await setup(h, { url: 'http://127.0.0.1:1/a' })
+    const route = await makeRoute(h, { destinationIds: [a.destination.id], actorIn: ['U_OK'] })
+    const ok = await insertEvent(h, a.connection.id, { actor: 'U_OK' })
+    const other = await insertEvent(h, a.connection.id, { actor: 'U_OTHER' })
+    const none = await insertEvent(h, a.connection.id, { actor: null })
+    for (const e of [ok, other, none]) await h.router({ eventId: e.id })
+    const rows = await h.db.select().from(schema.deliveries)
+    expect(rows.map((r) => [r.eventId, r.routeId])).toEqual([[ok.id, route.id]])
+    expect(h.metrics.routerEvents.get({ outcome: 'matched' })).toBe(1)
+    expect(h.metrics.routerEvents.get({ outcome: 'unmatched' })).toBe(2)
+  })
+
   it('ignores disabled destinations', async () => {
     const a = await setup(h, { url: 'http://127.0.0.1:1/a' })
     await makeRoute(h, { destinationIds: [a.destination.id] })

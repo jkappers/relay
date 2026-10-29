@@ -63,6 +63,16 @@ async function seedTenant(email: string, name: string): Promise<Tenant> {
     .values({ eventId, routeId: route.id, destinationId: destination.id, status: 'failed', attempts: 8, lastError: `${name} failure`, lastReplyJti: `${name}-jti` })
     .returning()
   await h.db.insert(schema.actionsLog).values({ deliveryId: delivery!.id, idempotencyKey: 'k', type: 'reply', params: {}, status: 'failed' })
+  await h.db.insert(schema.routeDecisions).values({
+    eventId,
+    connectionId: connection.id,
+    mode: 'enforce',
+    model: `${name}-model`,
+    candidates: [{ routeId: route.id, label: 'r1' }],
+    selected: [route.id],
+    status: 'fallback',
+    error: `${name} classifier error`,
+  })
   return { account, connectionId: connection.id, destinationId: destination.id, routeId: route.id, eventId, deliveryId: delivery!.id }
 }
 
@@ -106,7 +116,7 @@ function bodyFor(method: string, path: string): unknown {
   return {}
 }
 
-const secretsOf = (t: Tenant) => [t.connectionId, t.destinationId, t.routeId, t.eventId, t.deliveryId, 'bravo private text', 'bravo failure']
+const secretsOf = (t: Tenant) => [t.connectionId, t.destinationId, t.routeId, t.eventId, t.deliveryId, 'bravo private text', 'bravo failure', 'bravo-model', 'bravo classifier error', 'bravo-route']
 
 describe('tenant isolation', () => {
   it('covers every tenant endpoint', () => {
@@ -159,6 +169,19 @@ describe('tenant isolation', () => {
     expect(preview).toMatchObject({ scanned: 1, matches: [{ id: a.eventId }] })
     const overview = await (await a.account.api('GET', `/api/c/${a.connectionId}/overview`)).json()
     expect(overview).toMatchObject({ events: 1, deliveries: { failed: 1 }, failedActions: 1 })
+  })
+
+  it("returns A's route decision under A's path and never B's", async () => {
+    const own = await body(await a.account.api('GET', `/api/c/${a.connectionId}/events/${a.eventId}/decision`))
+    expect(own.decision).toMatchObject({ model: 'alpha-model', error: 'alpha classifier error', candidates: [{ routeId: a.routeId, routeName: 'alpha-route', selected: true }] })
+    for (const path of [`/api/c/${a.connectionId}/events/${b.eventId}/decision`, `/api/c/${b.connectionId}/events/${b.eventId}/decision`]) {
+      const res = await a.account.api('GET', path)
+      expect(res.status, path).toBe(404)
+      const text = await res.text()
+      for (const s of secretsOf(b)) expect(text).not.toContain(s)
+    }
+    const detail = await (await a.account.api('GET', `/api/c/${a.connectionId}/events/${a.eventId}`)).text()
+    for (const s of secretsOf(b)) expect(detail).not.toContain(s)
   })
 
   it("returns nothing for ?eventId= of B's event under A's path", async () => {

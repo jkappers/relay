@@ -59,6 +59,19 @@ async function seedEvent(connectionId: string, over: Partial<Envelope> & { recei
   return id
 }
 
+async function seedDecision(eventId: string, connectionId: string, over: Partial<typeof schema.routeDecisions.$inferInsert> = {}) {
+  await h.db.insert(schema.routeDecisions).values({
+    eventId,
+    connectionId,
+    mode: 'enforce',
+    model: 'claude-haiku-5-5',
+    candidates: [],
+    selected: [],
+    status: 'ok',
+    ...over,
+  })
+}
+
 async function seedDestination() {
   const body = await json(api('POST', '/api/destinations', { kind: 'http', name: 'echo', url: 'http://localhost:9/x' }))
   return body.id as string
@@ -277,6 +290,46 @@ describe('routes', () => {
     expect(plain).toMatchObject({ selection: 'always', intent: null, classifierFallback: 'drop' })
   })
 
+  it('stores actorIn, keeps it on an update that omits it, and clears it with null or []', async () => {
+    const d = await seedDestination()
+    const base = { name: 'a', eventType: 'x', destinationIds: [d] }
+    const res = await api('POST', '/api/routes', { ...base, actorIn: [' U1 ', 'U2', 'U1'] })
+    expect(res.status).toBe(201)
+    const route = await json(res)
+    expect(route.actorIn).toEqual(['U1', 'U2'])
+
+    expect((await json(api('PUT', `/api/routes/${route.id}`, { ...base, name: 'a2' }))).actorIn).toEqual(['U1', 'U2'])
+    expect((await json(api('PUT', `/api/routes/${route.id}`, { ...base, actorIn: ['U3'] }))).actorIn).toEqual(['U3'])
+    expect((await json(api('PUT', `/api/routes/${route.id}`, { ...base, actorIn: [] }))).actorIn).toBeNull()
+    await api('PUT', `/api/routes/${route.id}`, { ...base, actorIn: ['U3'] })
+    expect((await json(api('PUT', `/api/routes/${route.id}`, { ...base, actorIn: null }))).actorIn).toBeNull()
+
+    expect((await json(api('POST', '/api/routes', base))).actorIn).toBeNull()
+    expect((await json(api('POST', '/api/routes', { ...base, actorIn: [] }))).actorIn).toBeNull()
+  })
+
+  it('validates actorIn', async () => {
+    const d = await seedDestination()
+    const base = { name: 'a', eventType: 'x', destinationIds: [d] }
+    for (const actorIn of ['U1', [''], ['   '], [1], ['x'.repeat(201)], Array.from({ length: 101 }, (_, i) => `U${i}`), { U1: true }]) {
+      expect((await api('POST', '/api/routes', { ...base, actorIn })).status, JSON.stringify(actorIn)).toBe(400)
+    }
+    expect((await api('POST', '/api/routes', { ...base, actorIn: ['x'.repeat(200)] })).status).toBe(201)
+    expect((await api('POST', '/api/routes', { ...base, actorIn: Array.from({ length: 100 }, (_, i) => `U${i}`) })).status).toBe(201)
+    expect((await api('POST', '/api/routes/preview', { eventType: '*', actorIn: [''] })).status).toBe(400)
+  })
+
+  it('previews actorIn against the stored actor', async () => {
+    const alice = await seedEvent(conn, { actor: 'U_ALICE' })
+    await seedEvent(conn, { actor: 'U_BOB' })
+    await seedEvent(conn, { actor: null })
+    const only = await json(api('POST', '/api/routes/preview', { eventType: '*', actorIn: ['U_ALICE'] }))
+    expect(only.matches.map((m: any) => m.id)).toEqual([alice])
+    expect(only.matches[0].actor).toBe('U_ALICE')
+    expect((await json(api('POST', '/api/routes/preview', { eventType: '*', actorIn: [] }))).matches).toHaveLength(3)
+    expect((await json(api('POST', '/api/routes/preview', { eventType: '*' }))).matches).toHaveLength(3)
+  })
+
   it('validates classifier route fields', async () => {
     const d = await seedDestination()
     const base = { name: 'g', eventType: 'x', destinationIds: [d] }
@@ -434,6 +487,77 @@ describe('events', () => {
     expect((await json(slackApi('GET', `/api/events/${echo}`))).state).toBe('skipped_inactive')
   })
 
+  it('reports classified_none when an enforce decision left the event with no deliveries', async () => {
+    const dest = await seedDestination()
+    const route = await json(api('POST', '/api/routes', { name: 'gated', eventType: '*', destinationIds: [dest], selection: 'classifier', intent: 'invoices' }))
+    const none = await seedEvent(conn, { routed: true })
+    await seedDecision(none, conn, { candidates: [{ routeId: route.id, label: 'r1' }] })
+    const shadow = await seedEvent(conn, { routed: true })
+    await seedDecision(shadow, conn, { mode: 'shadow', candidates: [{ routeId: route.id, label: 'r1' }] })
+    const delivered = await seedEvent(conn, { routed: true })
+    await seedDecision(delivered, conn, { candidates: [{ routeId: route.id, label: 'r1' }], selected: [route.id] })
+    await h.db.insert(schema.deliveries).values({ eventId: delivered, routeId: route.id, destinationId: dest, status: 'succeeded' })
+
+    expect(await json(api('GET', `/api/events/${none}`))).toMatchObject({ state: 'classified_none', classified: true })
+    expect(await json(api('GET', `/api/events/${shadow}`))).toMatchObject({ state: 'unmatched', classified: true })
+    expect(await json(api('GET', `/api/events/${delivered}`))).toMatchObject({ state: 'routed', classified: true })
+    const unclassified = await seedEvent(conn, { routed: true })
+    expect(await json(api('GET', `/api/events/${unclassified}`))).toMatchObject({ state: 'unmatched', classified: false })
+
+    const traces = Object.fromEntries((await json(api('GET', '/api/events'))).items.map((e: any) => [e.id, e.trace.routed]))
+    expect(traces).toMatchObject({ [none]: 'classified_none', [shadow]: 'unmatched', [delivered]: 'routed', [unclassified]: 'unmatched' })
+  })
+
+  it('returns the stored route decision for an event, with route names from this connection only', async () => {
+    const dest = await seedDestination()
+    const a = await json(api('POST', '/api/routes', { name: 'billing <b>', eventType: '*', destinationIds: [dest], selection: 'classifier', intent: 'invoices' }))
+    const b = await json(api('POST', '/api/routes', { name: 'support', eventType: '*', destinationIds: [dest], selection: 'classifier', intent: 'help' }))
+    const other = await seedConnection()
+    const otherDest = await json(tenantApi(other)('POST', '/api/destinations', { kind: 'http', name: 'x', url: 'http://localhost:9/x' }))
+    const foreign = await json(tenantApi(other)('POST', '/api/routes', { name: 'foreign-route-name', eventType: '*', destinationIds: [otherDest.id] }))
+
+    const eventId = await seedEvent(conn, { routed: true })
+    expect(await json(api('GET', `/api/events/${eventId}/decision`))).toEqual({ decision: null })
+
+    await seedDecision(eventId, conn, {
+      candidates: [
+        { routeId: a.id, label: 'r1' },
+        { routeId: b.id, label: 'r2' },
+        { routeId: foreign.id, label: 'r3' },
+      ],
+      selected: [b.id],
+      status: 'fallback',
+      error: 'APIConnectionTimeoutError',
+      latencyMs: 5012,
+      inputTokens: 120,
+      outputTokens: 7,
+    })
+    const res = await json(api('GET', `/api/events/${eventId}/decision`))
+    expect(res.decision).toMatchObject({
+      mode: 'enforce',
+      model: 'claude-haiku-5-5',
+      status: 'fallback',
+      error: 'APIConnectionTimeoutError',
+      latencyMs: 5012,
+      inputTokens: 120,
+      outputTokens: 7,
+      candidates: [
+        { label: 'r1', routeId: a.id, routeName: 'billing <b>', selected: false },
+        { label: 'r2', routeId: b.id, routeName: 'support', selected: true },
+        { label: 'r3', routeId: foreign.id, routeName: null, selected: false },
+      ],
+      selected: [{ routeId: b.id, routeName: 'support' }],
+    })
+    expect(JSON.stringify(res)).not.toContain('foreign-route-name')
+    expect(Object.keys(res.decision)).not.toContain('connectionId')
+
+    expect((await api('GET', `/api/events/${randomUUID()}/decision`)).status).toBe(404)
+    expect((await api('GET', '/api/events/not-a-uuid/decision')).status).toBe(404)
+    const otherEvent = await seedEvent(other, { routed: true })
+    await seedDecision(otherEvent, other)
+    expect((await api('GET', `/api/events/${otherEvent}/decision`)).status).toBe(404)
+  })
+
   it('summarizes each event trace in the list', async () => {
     const dest = await seedDestination()
     const dest2 = await seedDestination()
@@ -514,6 +638,8 @@ describe('events', () => {
     await h.db.insert(schema.actionsLog).values({ deliveryId: okDelivery.id, idempotencyKey: 'f', type: 'reply', params: {}, status: 'failed' })
     const retrying = await seedEvent(conn, { routed: true })
     await deliver(retrying, 'pending')
+    const classified = await seedEvent(conn, { routed: true })
+    await seedDecision(classified, conn, { candidates: [{ routeId: route.id, label: 'r1' }] })
 
     const slackConn = await seedSlackConnection()
     const slackApi = tenantApi(slackConn.id)
@@ -534,6 +660,7 @@ describe('events', () => {
       failed: [failedDelivery, failedAction],
       pending: [unroutedYet, retrying],
       unrouted: [unmatched],
+      classified: [classified],
       echo: [],
       ok: [ok],
     }
@@ -543,10 +670,10 @@ describe('events', () => {
     expect(await ids('outcome=unrouted', revokedApi)).toEqual([inactive])
     expect((await api('GET', '/api/events?outcome=broken')).status).toBe(400)
 
-    expect(await json(api('GET', '/api/events/facets'))).toEqual({ all: 6, failed: 2, pending: 2, unrouted: 1, echo: 0, ok: 1 })
-    expect(await json(api('GET', `/api/events/facets?connectionId=${slackConn.id}`))).toEqual({ all: 6, failed: 2, pending: 2, unrouted: 1, echo: 0, ok: 1 })
-    expect(await json(slackApi('GET', '/api/events/facets?provider=slack'))).toEqual({ all: 1, failed: 0, pending: 0, unrouted: 0, echo: 1, ok: 0 })
-    expect(await json(revokedApi('GET', '/api/events/facets'))).toEqual({ all: 1, failed: 0, pending: 0, unrouted: 1, echo: 0, ok: 0 })
+    expect(await json(api('GET', '/api/events/facets'))).toEqual({ all: 7, failed: 2, pending: 2, unrouted: 1, classified: 1, echo: 0, ok: 1 })
+    expect(await json(api('GET', `/api/events/facets?connectionId=${slackConn.id}`))).toEqual({ all: 7, failed: 2, pending: 2, unrouted: 1, classified: 1, echo: 0, ok: 1 })
+    expect(await json(slackApi('GET', '/api/events/facets?provider=slack'))).toEqual({ all: 1, failed: 0, pending: 0, unrouted: 0, classified: 0, echo: 1, ok: 0 })
+    expect(await json(revokedApi('GET', '/api/events/facets'))).toEqual({ all: 1, failed: 0, pending: 0, unrouted: 1, classified: 0, echo: 0, ok: 0 })
     expect((await api('GET', '/api/events/facets?since=nope')).status).toBe(400)
   })
 
