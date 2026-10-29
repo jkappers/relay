@@ -5,6 +5,7 @@ export const workerEnvSchema = coreEnvSchema
   .extend({
     PUBLIC_URL: z.url().transform((u) => u.replace(/\/+$/, '')),
     SLACK_API_BASE_URL: z.url().default('https://slack.com/api'),
+    SMS_API_BASE_URL: z.url().default('https://api.twilio.com'),
     REPLY_TOKEN_TTL_SECONDS: z.coerce.number().int().min(1).default(3600),
     WORKER_METRICS_PORT: z.coerce.number().int().min(1).max(65535).default(9465),
     DISPATCH_BACKOFF_BASE_MS: z.coerce.number().int().min(1).default(5_000),

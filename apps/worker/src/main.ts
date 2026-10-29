@@ -18,6 +18,7 @@ import {
 } from '@relay/core'
 import { createDemoRunner, createSdkRunner } from '@relay/destination-agent'
 import { createSlackRuntime } from '@relay/provider-slack'
+import { createSmsRuntime } from '@relay/provider-sms'
 import { createWebhookRuntime } from '@relay/provider-webhook'
 import { createActionsHandler } from './actions'
 import { createAgentHandler } from './agent'
@@ -43,6 +44,7 @@ async function main() {
   const runtimes = {
     slack: createSlackRuntime({ db, apiBase: config.SLACK_API_BASE_URL }),
     webhook: createWebhookRuntime(),
+    sms: createSmsRuntime({ db, apiBase: config.SMS_API_BASE_URL }),
   }
   const route = createRouter({ db, queue, metrics, runtimes })
   const execute = createActionExecutor({
