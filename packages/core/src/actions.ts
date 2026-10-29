@@ -1,7 +1,7 @@
 import { and, eq, lt } from 'drizzle-orm'
 import { z } from 'zod'
 import type { ConnectionStore } from './connections'
-import type { Db } from './db/client'
+import type { Db, Tx } from './db/client'
 import { actionsLog, connections, deliveries, destinations, events, sentMessages } from './db/schema'
 import type { Envelope } from './envelope'
 import { log } from './log'
@@ -12,7 +12,7 @@ export const MAX_ACTIONS_PER_REQUEST = 20
 export const PENDING_STALE_MS = 60_000
 export const MAX_ACTION_ATTEMPTS = 8
 
-export type ActionMode = 'sync' | 'async'
+export type ActionMode = 'sync' | 'async' | 'agent'
 export type ActionOutcome = 'succeeded' | 'failed' | 'replayed' | 'in_progress' | 'retry'
 export type ActionStatus = 'succeeded' | 'failed' | 'in_progress' | 'retry'
 
@@ -112,7 +112,12 @@ export function createActionExecutor(deps: ExecutorDeps) {
     return row ?? null
   }
 
-  return async function executeActions(deliveryId: string, actions: RawAction[], mode: ActionMode): Promise<ActionResult[]> {
+  return async function executeActions(
+    deliveryId: string,
+    actions: RawAction[],
+    mode: ActionMode,
+    hooks: ExecuteHooks = {},
+  ): Promise<ActionResult[]> {
     const ctx = await loadContext(deliveryId)
     if (!ctx) return actions.map((a) => ({ type: a.type, status: 'failed', error: 'unknown_delivery' }))
     const provider = ctx.event.provider
@@ -240,6 +245,7 @@ export function createActionExecutor(deps: ExecutorDeps) {
               .values({ connectionId: ctx.connection.id, channel: sent.channel, ts: sent.ts })
               .onConflictDoNothing()
           }
+          await hooks.onMutationSucceeded?.(tx, v.type)
         })
         finish(r.result, 'succeeded')
       } else if (r.result.status === 'failed') {
@@ -266,6 +272,11 @@ export function createActionExecutor(deps: ExecutorDeps) {
     }
     return results
   }
+}
+
+export interface ExecuteHooks {
+  /** Runs inside the transaction that records a successful mutating action. */
+  onMutationSucceeded?: (tx: Tx, type: string) => Promise<void>
 }
 
 export type ActionExecutor = ReturnType<typeof createActionExecutor>

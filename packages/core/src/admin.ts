@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
+import { agentConfigSchema } from './agent-config'
 import type { Cipher } from './crypto'
 import type { Db } from './db/client'
 import {
@@ -25,6 +26,22 @@ export const createDestinationInput = z.object({
   allowedActions: z.array(z.string().min(1)).nullable().default(null),
 })
 export type CreateDestinationInput = z.input<typeof createDestinationInput>
+
+export const createAgentDestinationInput = z.object({
+  name: z.string().min(1),
+  config: agentConfigSchema,
+  allowedActions: z.array(z.string().min(1)).nullable().default(null),
+})
+export type CreateAgentDestinationInput = z.input<typeof createAgentDestinationInput>
+
+export async function createAgentDestination(db: Db, input: CreateAgentDestinationInput): Promise<DestinationRow> {
+  const parsed = createAgentDestinationInput.parse(input)
+  const [destination] = await db
+    .insert(destinations)
+    .values({ name: parsed.name, kind: 'agent', config: parsed.config, allowedActions: parsed.allowedActions })
+    .returning()
+  return destination!
+}
 
 export async function createDestination(
   db: Db,

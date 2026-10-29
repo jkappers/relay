@@ -3,17 +3,22 @@ import { fromDrizzle, PgBoss } from 'pg-boss'
 import type { Tx } from './db/client'
 import { log } from './log'
 
-export const QUEUES = { route: 'route', dispatch: 'dispatch', actions: 'actions' } as const
+export const QUEUES = { route: 'route', dispatch: 'dispatch', actions: 'actions', agent: 'agent' } as const
 
 export const QUEUE_OPTIONS: Record<string, QueueOptions> = {
   [QUEUES.route]: { policy: 'short' },
   [QUEUES.dispatch]: { policy: 'short', retryLimit: 5, retryDelay: 5, retryBackoff: true },
   [QUEUES.actions]: { policy: 'short', retryLimit: 5, retryDelay: 5, retryBackoff: true },
+  [QUEUES.agent]: { policy: 'short', retryLimit: 2, retryDelay: 30, retryBackoff: true, expireInSeconds: 3900 },
 }
 
 export interface RouteJob {
   eventId: string
   recheck?: boolean
+}
+
+export interface AgentJob {
+  deliveryId: string
 }
 
 export interface ActionsJob {
@@ -41,6 +46,7 @@ export interface QueueOptions {
   retryLimit?: number
   retryDelay?: number
   retryBackoff?: boolean
+  expireInSeconds?: number
 }
 
 export interface QueueJob<T> {

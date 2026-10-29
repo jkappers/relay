@@ -1,4 +1,5 @@
 export * from './actions'
+export * from './agent-config'
 export * from './admin'
 export * from './backoff'
 export * from './config'

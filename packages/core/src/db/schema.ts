@@ -1,9 +1,11 @@
 import { sql } from 'drizzle-orm'
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -68,21 +70,28 @@ export const events = pgTable(
   ],
 )
 
-export const destinationKind = pgEnum('destination_kind', ['http'])
+export const destinationKind = pgEnum('destination_kind', ['http', 'agent'])
 
-export const destinations = pgTable('destinations', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull(),
-  kind: destinationKind('kind').notNull().default('http'),
-  url: text('url').notNull(),
-  secretCiphertext: text('secret_ciphertext').notNull(),
-  enabled: boolean('enabled').notNull().default(true),
-  maxAttempts: integer('max_attempts').notNull().default(8),
-  timeoutMs: integer('timeout_ms').notNull().default(10000),
-  allowedActions: text('allowed_actions').array(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+export const destinations = pgTable(
+  'destinations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    kind: destinationKind('kind').notNull().default('http'),
+    url: text('url'),
+    secretCiphertext: text('secret_ciphertext'),
+    enabled: boolean('enabled').notNull().default(true),
+    maxAttempts: integer('max_attempts').notNull().default(8),
+    timeoutMs: integer('timeout_ms').notNull().default(10000),
+    allowedActions: text('allowed_actions').array(),
+    config: jsonb('config'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('destinations_http_needs_url_and_secret', sql`${t.kind} <> 'http' or (${t.url} is not null and ${t.secretCiphertext} is not null)`),
+  ],
+)
 
 export const routes = pgTable('routes', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -179,6 +188,31 @@ export const sentMessages = pgTable(
   (t) => [uniqueIndex('sent_messages_connection_channel_ts_uq').on(t.connectionId, t.channel, t.ts)],
 )
 
+export const agentRunStatus = pgEnum('agent_run_status', ['running', 'succeeded', 'failed'])
+
+export const agentRuns = pgTable('agent_runs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  deliveryId: uuid('delivery_id')
+    .notNull()
+    .unique()
+    .references(() => deliveries.id),
+  status: agentRunStatus('status').notNull().default('running'),
+  attempts: integer('attempts').notNull().default(1),
+  mutated: boolean('mutated').notNull().default(false),
+  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+  leaseUntil: timestamp('lease_until', { withTimezone: true }).notNull(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  turns: integer('turns').notNull().default(0),
+  inputTokens: integer('input_tokens').notNull().default(0),
+  outputTokens: integer('output_tokens').notNull().default(0),
+  cacheReadTokens: integer('cache_read_tokens').notNull().default(0),
+  cacheCreationTokens: integer('cache_creation_tokens').notNull().default(0),
+  costUsd: numeric('cost_usd', { precision: 12, scale: 6 }).notNull().default('0'),
+  finalText: text('final_text'),
+  toolCalls: jsonb('tool_calls').notNull().default(sql`'[]'::jsonb`),
+  error: text('error'),
+})
+
 export const revokedTokens = pgTable('revoked_tokens', {
   jti: text('jti').primaryKey(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }).notNull().defaultNow(),
@@ -188,5 +222,6 @@ export type ConnectionRow = typeof connections.$inferSelect
 export type EventRow = typeof events.$inferSelect
 export type CredentialKind = (typeof credentialKind.enumValues)[number]
 export type DestinationRow = typeof destinations.$inferSelect
+export type AgentRunRow = typeof agentRuns.$inferSelect
 export type RouteRow = typeof routes.$inferSelect
 export type DeliveryRow = typeof deliveries.$inferSelect
