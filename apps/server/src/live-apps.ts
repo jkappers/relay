@@ -26,6 +26,7 @@ export interface LiveAppsDeps {
   ingress: IngressDeps
   nowSeconds: () => number
   discordApiBase?: string | undefined
+  discordBotToken?: () => Promise<string | undefined>
   fetch?: typeof fetch | undefined
 }
 
@@ -108,6 +109,7 @@ export function createLiveApps(deps: LiveAppsDeps) {
         clientSecret: config.clientSecret,
         allowedUserIds: config.allowedUserIds,
         connections: deps.connections,
+        ...(deps.discordBotToken ? { botToken: deps.discordBotToken } : {}),
         ...(deps.discordApiBase ? { apiBase: deps.discordApiBase } : {}),
         ...fetchOpt,
       }),

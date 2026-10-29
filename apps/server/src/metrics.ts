@@ -83,6 +83,21 @@ export function createServerMetrics(registry = new MetricsRegistry()) {
       'OAuth callback results.',
       ['provider', 'outcome'] as const,
     ),
+    discordLinks: registry.counter(
+      'relay_discord_link_total',
+      'Discord identify-step callbacks (link Discord to list servers) by outcome.',
+      ['outcome'] as const,
+    ),
+    discordGuildPicks: registry.counter(
+      'relay_discord_guild_pick_total',
+      'Discord servers picked in the console: direct (bot already there) or invite (sent to Discord to add the bot).',
+      ['kind'] as const,
+    ),
+    discordDirectConnects: registry.counter(
+      'relay_discord_direct_connect_total',
+      'Direct connects of a server the bot is already in, by outcome.',
+      ['outcome'] as const,
+    ),
   }
 }
 

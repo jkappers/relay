@@ -28,7 +28,7 @@ import { ingressHandler } from './ingress'
 import type { ServerMetrics } from './metrics'
 import { createLiveApps } from './live-apps'
 import { oauthRoutes } from './oauth'
-import { deriveStateKey } from './oauth-state'
+import { deriveGrantKey, deriveStateKey } from './oauth-state'
 
 export interface AppDeps {
   config: Pick<ServerConfig, 'PUBLIC_URL' | 'SLACK_ALLOWED_USER_IDS' | 'RELAY_MASTER_KEY' | 'SIGNUP_MODE'> &
@@ -97,6 +97,7 @@ export function createApp(deps: AppDeps) {
     ingress: ingressDeps,
     nowSeconds,
     discordApiBase: deps.config.DISCORD_API_BASE_URL,
+    discordBotToken: discordBotTokenReader(providerApps),
     fetch: deps.fetch,
   })
   const distDir = deps.consoleDistDir ?? fileURLToPath(new URL('../../console/dist', import.meta.url))
@@ -153,6 +154,7 @@ export function createApp(deps: AppDeps) {
   const oauthDeps = {
     publicUrl: deps.config.PUBLIC_URL,
     stateKey: deriveStateKey(deps.config.RELAY_MASTER_KEY),
+    grantKey: deriveGrantKey(deps.config.RELAY_MASTER_KEY),
     metrics: deps.metrics,
     sessionUser: sessionUser(sessions),
     ...clock,
