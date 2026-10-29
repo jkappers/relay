@@ -2,7 +2,7 @@
 
 Relay is an event-ingest service. Providers like Slack and Discord send it events. Relay checks each event's signature, saves it, and puts it on a queue. A worker picks it up from there.
 
-Milestones 1 to 6 are done: ingest, routing, signed HTTP delivery with retries, actions (reply, react, and more) with a loop guard, agent destinations that run Claude on an event, a web console, and user accounts with each connection as its own tenant.
+Milestones 1 to 6 are done: ingest, routing, signed HTTP delivery with retries, actions (reply, react, and more) with a loop guard, agent destinations that run Claude on an event, a web console, user accounts with each connection as its own tenant, SMS through Twilio, and classifier routing (an LLM gate that can only narrow matched routes).
 
 ## How an event flows
 
@@ -15,6 +15,7 @@ Milestones 1 to 6 are done: ingest, routing, signed HTTP delivery with retries, 
 7. A delivery that runs out of attempts, or fails at once, is `failed`. Replay it with the CLI.
 8. If a succeeded delivery returned `{actions: [...]}`, an `actions` job runs them (see Actions below).
 9. Before routing, the router drops events that relay itself posted (see Loop guard below).
+10. If any matched route is gated by the classifier, one classifier call decides which of those gated routes get the event (see Classifier routing below).
 
 A route belongs to one connection and only sees that connection's events. It matches when it is enabled and:
 
@@ -39,6 +40,7 @@ Events with no text never match a text filter.
 | `packages/providers/webhook` | Generic signed-webhook adapter |
 | `packages/providers/sms` | Twilio SMS adapter: signature check, normalize, `send` action |
 | `packages/destinations/agent` | Agent runner (Claude Agent SDK), tool set, prompts |
+| `packages/classifier` | Classifier for gated routes: Anthropic Messages API call, prompt, label mapping, fake |
 
 ## Run it
 
@@ -91,10 +93,11 @@ Tests use the `relay_test` database. Compose creates it on first start, so tests
 | `DISPATCH_BACKOFF_BASE_MS`, `DISPATCH_BACKOFF_CAP_MS` | worker | Retry backoff. Defaults 5000 and 900000. |
 | `SWEEP_INTERVAL_SECONDS`, `SWEEP_GRACE_SECONDS` | worker | How often the sweeper runs (60) and how old stuck work must be before it is requeued (300). |
 | `WORKER_POLL_SECONDS` | worker | Queue poll interval. Default 2, minimum 0.5. |
-| `ANTHROPIC_API_KEY` | worker | Needed to run agents. Not needed otherwise. If it is missing, agent runs fail with `missing_api_key` and the worker keeps running. Never logged. |
+| `ANTHROPIC_API_KEY` | worker | Needed to run agents and the classifier. Not needed otherwise. If it is missing, agent runs fail with `missing_api_key`, classifier calls fail and use their fallbacks, and the worker keeps running. Never logged. |
 | `AGENT_CONCURRENCY` | worker | How many agent runs at once. Default 1. |
 | `AGENT_BACKOFF_BASE_MS`, `AGENT_BACKOFF_CAP_MS` | worker | Retry backoff for agent runs that fail before any change. Defaults 15000 and 300000. |
 | `RELAY_AGENT_RUNNER` | worker | `sdk` (default) or `fake`. `fake` posts a canned reply with no API call, for tests and demos. Refused when `NODE_ENV=production`. |
+| `RELAY_CLASSIFIER` | worker | `anthropic` (default) or `fake`. `fake` picks routes whose intent shares a word with the text, with no API call, for tests and demos. Refused when `NODE_ENV=production`. |
 | `TEST_DATABASE_URL` | tests | Optional. Defaults to `relay_test` in compose. |
 
 Make a master key:
@@ -132,7 +135,7 @@ Console API. Everything needs a session except signing in and signing up.
 | `GET /api/connections/slack-url` | Where to start Slack OAuth. |
 | `GET /api/connections/providers` | `{slack, discord}`: the install start URL for each, or null when its app settings are missing. |
 | `POST /api/tokens/revoke` | Revoke a reply token by `jti`. |
-| `/api/c/:connectionId/*` | Everything else, inside one connection: `overview`, `events`, `events/facets`, `events/:id`, `events/:id/replay`, `deliveries`, `deliveries/:id/replay`, `routes`, `routes/preview`, `routes/:id` (and `enable`, `disable`), `destinations`, `destinations/:id`, `destinations/:id/rotate-secret`, `revoke`. |
+| `/api/c/:connectionId/*` | Everything else, inside one connection: `overview`, `events`, `events/facets`, `events/:id`, `events/:id/replay`, `deliveries`, `deliveries/:id/replay`, `routes`, `routes/preview`, `routes/:id` (and `enable`, `disable`), `classifier` (`GET`, and `PUT {mode, dailyLimit}`), `destinations`, `destinations/:id`, `destinations/:id/rotate-secret`, `revoke`. |
 
 If you are not a member of the connection, or an id belongs to another connection, the answer is 404.
 | `GET /metrics` | Prometheus text. See `docs/metrics.md`. |
@@ -242,6 +245,33 @@ What can still happen: a crafted message may make the agent post an unwanted rep
 ### Cost and limits
 
 You pay for the Anthropic API calls. Each run records turns, tokens, and the SDK's cost estimate (an estimate, not a bill). Costs are bounded by `maxTurns`, `timeoutSeconds`, retries (3 attempts), and `AGENT_CONCURRENCY`. Watch `relay_agent_cost_usd_total` and `relay_agent_tokens_total` (see `docs/metrics.md`).
+
+## Classifier routing
+
+A route can be gated by a classifier. The deterministic match still runs first. The classifier can only narrow: of the gated routes that matched, it picks which get the event. It can never add a route, pick a destination, or see a URL. Design and trade-offs: `docs/adr/0009-classifier-routing.md`.
+
+Route fields (console API):
+
+| Field | Default | Meaning |
+|---|---|---|
+| `selection` | `always` | `always` delivers on match. `classifier` delivers on match only if the classifier picks it. |
+| `intent` | none | What events this route is for, in plain words. Required for `classifier`. Max 500 chars. This is all the model sees of the route. |
+| `classifierFallback` | `drop` | What a gated route does when there is no usable answer (timeout, error, refusal, bad output, or over the daily limit): `drop` or `deliver`. |
+
+Connection settings (`GET`/`PUT /api/c/:connectionId/classifier`, body `{mode, dailyLimit}`):
+
+| Field | Default | Meaning |
+|---|---|---|
+| `mode` | `off` | `off`: `classifier` routes act like `always` and nothing is called. `shadow`: call and record, but deliver every gated route. `enforce`: deliver only what the classifier picks. |
+| `dailyLimit` | 1000 | Most calls per UTC day (0 to 100000), counted from stored decisions. Over it, there is no call and the fallbacks apply. |
+
+How it runs:
+
+- One call per event, with `claude-haiku-5-5`, structured output limited to the labels `r1..rn`, 5 s timeout, 1 retry. Gated routes are shown only as a label plus their intent. Labels outside the set are dropped.
+- The first decision is stored in `route_decisions` and is final. Retries, rechecks, sweeps, and replays reuse it, intersected with the routes that match now. A gated route added later never gets that event.
+- Echoes are dropped before the classifier, so they never reach it.
+- Event text is untrusted. Injected text can at most change which of the matched gated routes get the event. Never use a classifier route as the only guard in front of a high-risk destination. Use deterministic filters for that.
+- Watch `relay_classifier_calls_total`, `relay_classifier_decisions_total`, and `relay_classifier_tokens_total` (see `docs/metrics.md`).
 
 ## Verify a delivery
 

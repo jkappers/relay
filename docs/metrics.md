@@ -29,6 +29,9 @@ Worker metrics:
 | `relay_agent_cost_usd_total` | counter | none | Estimated spend of agent runs in US dollars, as the SDK reports it. A float counter (the registry stores JS numbers), so there is no micro-dollar variant. It is an estimate, not a bill. |
 | `relay_actions_total` | counter | `provider`, `type`, `mode`, `outcome` | One per action handled by the `actions` job (`mode="sync"`). See below. |
 | `relay_cross_tenant_blocked_total` | counter | `stage` | A route link or delivery paired an event with a destination in another connection, and relay refused it. See below. |
+| `relay_classifier_calls_total` | counter | `outcome` | One per `route` job whose event matched at least one gated route (`selection = classifier`, connection mode `shadow` or `enforce`). See below. |
+| `relay_classifier_decisions_total` | counter | `mode`, `result` | One per event: counted by the job whose decision was stored. Reuse adds 0. See below. |
+| `relay_classifier_tokens_total` | counter | `kind` | Tokens used by classifier calls: `input`, `output`. Counted for every call, including one whose decision lost a race. |
 
 Gateway metrics (`apps/gateway`):
 
@@ -89,7 +92,33 @@ Gateway metrics (`apps/gateway`):
 | `unmatched` | No route matched. |
 | `skipped_inactive` | The event's connection isn't `active`. |
 | `skipped_echo` | The provider says relay sent this message (Slack: its channel and ts are in `sent_messages`; SMS: the sender is the connection's own number; Discord: the channel and message id are in `sent_messages`, or the actor is the bot user). Marked routed, no deliveries. |
+| `classified_none` | Only gated routes matched, and after the classifier (or its fallbacks) none of them gets the event. Marked routed, no deliveries. Shadow mode never gives this. |
 | `echo_recheck` | The actor is the connection's own user, nothing matched `sent_messages` yet, and the event is under 30 s old. A `route` job with `recheck: true` was queued 5 s out. The event is not marked routed. Never for Discord: the bot's own posts are dropped at the gateway. |
+
+## `relay_classifier_calls_total` outcomes
+
+| Outcome | Meaning |
+|---|---|
+| `ok` | The classifier answered with a parseable list. |
+| `timeout` | Both attempts timed out (5 s each), or the 12 s overall deadline passed. Fallbacks apply. |
+| `error` | API error, missing `ANTHROPIC_API_KEY`, or anything else that threw. Fallbacks apply. |
+| `refusal` | The model refused (`stop_reason: refusal`). Fallbacks apply. |
+| `invalid` | Output hit `max_tokens` or did not parse. Fallbacks apply. |
+| `reused` | A decision for this event was already stored (retry, recheck, sweep, replay). No call. |
+| `budget_exceeded` | The connection's daily limit was reached. No call. Fallbacks apply. |
+
+## `relay_classifier_decisions_total` results
+
+`mode` is `shadow` or `enforce`.
+
+| Result | Meaning |
+|---|---|
+| `selected` | The classifier picked at least one gated route. |
+| `none` | The classifier picked no route. |
+| `fallback_deliver` | No usable answer (failure or over the limit), and at least one gated route has fallback `deliver`. |
+| `fallback_drop` | No usable answer, and every gated route has fallback `drop`. |
+
+In shadow mode every gated route is delivered whatever the result. The result shows what enforce would have done.
 
 ## `relay_delivery_attempts_total` outcomes
 
@@ -181,7 +210,7 @@ Changes made through the console API that succeeded. Labels `resource` and `acti
 
 | Resource | Actions |
 |---|---|
-| `connection` | `create`, `revoke` (`create` covers webhook and SMS connections) |
+| `connection` | `create`, `revoke`, `update` (`create` covers webhook and SMS connections; `update` is `PUT /classifier`) |
 | `destination` | `create`, `update`, `delete`, `rotate_secret` |
 | `route` | `create`, `update`, `delete`, `enable`, `disable` |
 | `event` | `replay` |
