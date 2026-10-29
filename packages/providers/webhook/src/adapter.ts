@@ -1,5 +1,5 @@
 import {
-  hmacSha256Hex,
+  computeSignature,
   notImplemented,
   safeEqual,
   sha256Hex,
@@ -15,7 +15,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const TYPE_RE = /^[A-Za-z0-9._-]{1,64}$/
 
 export function computeWebhookSignature(secret: string, timestamp: string, rawBody: string): string {
-  return `sha256=${hmacSha256Hex(secret, `${timestamp}.${rawBody}`)}`
+  return computeSignature(secret, timestamp, rawBody)
 }
 
 export function connectionIdFromRequest(req: Request): string | null {
