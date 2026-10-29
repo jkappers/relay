@@ -25,6 +25,8 @@ Worker metrics:
 | `relay_sweeper_requeued_total` | counter | `kind` | Jobs the sweeper queued again. `kind` is `event` (a `route` job for an event enqueued but never routed), `delivery` (a `dispatch` job for a delivery stuck `pending`), or `actions` (an `actions` job for a succeeded delivery whose response actions never finished). `delivery` covers both kinds: a stuck `http` delivery gets a `dispatch` job, a stuck `agent` delivery gets an `agent` job, and one with a live run lease is skipped. A sweep that finds a job already queued adds 0. |
 | `relay_agent_runs_total` | counter | `outcome` | One per agent run attempt that reached a result. See below. |
 | `relay_agent_tool_calls_total` | counter | `type`, `outcome` | One per agent tool call. See below. |
+| `relay_tool_destination_calls_total` | counter | `outcome` | One per agent call to a tool destination. See below. |
+| `relay_agent_tools_withheld_total` | counter | `reason` | A tool destination listed on an agent that a run did not offer. One per tool per run. See below. |
 | `relay_agent_tokens_total` | counter | `kind` | Tokens used by agent runs. See below. |
 | `relay_agent_cost_usd_total` | counter | none | Estimated spend of agent runs in US dollars, as the SDK reports it. A float counter (the registry stores JS numbers), so there is no micro-dollar variant. It is an estimate, not a bill. |
 | `relay_actions_total` | counter | `provider`, `type`, `mode`, `outcome` | One per action handled by the `actions` job (`mode="sync"`). See below. |
@@ -127,7 +129,7 @@ In shadow mode every gated route is delivered whatever the result. The result sh
 | `success` | 2xx. Delivery is `succeeded`. |
 | `retry` | Retryable failure with attempts left. Another job is scheduled. |
 | `failed_exhausted` | Retryable failure on the last attempt. Delivery is `failed`. |
-| `failed_non_retryable` | Non-retryable response (other 4xx, 3xx) or a disabled destination. Delivery is `failed`. |
+| `failed_non_retryable` | Non-retryable response (other 4xx, 3xx), a disabled destination, or a delivery to a tool destination (`not_deliverable`; routes cannot link one). Delivery is `failed`. |
 
 ## `relay_actions_total`
 
@@ -156,15 +158,45 @@ In shadow mode every gated route is delivered whatever the result. The result sh
 
 ## `relay_agent_tool_calls_total`
 
-`type` is the action name (`reply`, `thread.history`, ...). Tool calls the model made that are not relay actions are counted as `type="other"`.
+`type` is the action name (`reply`, `thread.history`, ...), or `tool` for a call to a tool destination (one label for all of them, so the label set stays small; `relay_tool_destination_calls_total` has the detail). Tool calls the model made that are neither are counted as `type="other"`.
 
 | Outcome | Meaning |
 |---|---|
-| `succeeded` | The action ran. |
-| `failed` | The action failed for good (invalid params, not allowed, a non-retryable Slack error), or the run had already ended. |
+| `succeeded` | The action ran. For `type="tool"`: the endpoint answered 2xx. |
+| `failed` | The action failed for good (invalid params, not allowed, a non-retryable Slack error), or the run had already ended. For `type="tool"`: any outcome but `ok` (and the cap, below). |
 | `retry` | A temporary failure. The model got an error and may try again. |
 | `denied` | Blocked. Either a tool outside the relay list (`type="other"`), or a relay tool called after the run had ended (timeout). |
-| `cap_reached` | A mutating call past `maxMutatingActions`. Nothing was sent. |
+| `cap_reached` | A mutating call past `maxMutatingActions`. Nothing was sent. Mutating tool destinations share the cap with relay actions. |
+
+## `relay_tool_destination_calls_total` outcomes
+
+| Outcome | Meaning |
+|---|---|
+| `ok` | 2xx. The body (cut to 16000 chars) went to the model as untrusted data. |
+| `timeout` | No full answer within the tool's `timeoutMs`. A mutating call counts as a change (see ADR 0010). |
+| `error` | Network error, or the run ended mid-call. A mutating call counts as a change. |
+| `http_3xx` | A redirect. Not followed. Not a change. |
+| `http_4xx` | The endpoint refused. Not a change. |
+| `http_5xx` | Server error. A mutating call counts as a change. |
+| `too_large` | The request body was over 64 KB (not sent), or the response passed `maxResponseBytes` (the read stopped; a mutating call counts as a change). |
+| `blocked` | Not sent: past `maxMutatingActions`, the run had ended, or the stored URL is not http(s). |
+| `invalid` | The args failed the tool's schema. Not sent. |
+
+The model gets only the outcome code and status, never the endpoint's error body.
+
+## `relay_agent_tools_withheld_total` reasons
+
+Counted when a run is built. A withheld tool is not in the tool list or the prompt.
+
+| Reason | Meaning |
+|---|---|
+| `sensitive` | A `sensitive` tool, and the route that made the delivery has no `actor_in` list or the event's actor is not on it. Expected for every event from an untrusted actor. |
+| `disabled` | The tool destination is disabled. |
+| `missing` | The id is gone, or it is not a tool destination. |
+| `invalid` | Its stored config no longer parses (for example a name that is now reserved). |
+| `name_collision` | Its name matches a relay action tool or another tool in the run. Writes reject this, so it needs a hand-edited row or a new relay action. |
+
+A tool destination in another connection is not counted here. It goes to `relay_cross_tenant_blocked_total{stage="agent_tool"}`.
 
 ## `relay_agent_tokens_total` kinds
 
@@ -201,8 +233,9 @@ Label `outcome`:
 | `router` | A matched route linked a destination in another connection. That link was skipped. Other links still deliver. |
 | `dispatch` | The dispatcher found a delivery whose destination is in another connection. Marked `failed` with `cross_tenant`. Nothing was sent and no reply token was made. |
 | `agent` | The agent handler found the same. Marked `failed` with `cross_tenant`. No run started. |
+| `agent_tool` | An agent's `toolDestinationIds` named a tool destination in another connection. That tool was skipped. The run went on without it. One per tool per run. |
 
-All three should stay at 0. A non-zero count means a bad row from before accounts, or a bug.
+All four should stay at 0. A non-zero count means a bad row from before accounts, or a bug.
 
 ## `relay_console_mutations_total`
 
@@ -211,7 +244,7 @@ Changes made through the console API that succeeded. Labels `resource` and `acti
 | Resource | Actions |
 |---|---|
 | `connection` | `create`, `revoke`, `update` (`create` covers webhook and SMS connections; `update` is `PUT /classifier`, the classifier mode and daily limit, from the console's Routes page or the API) |
-| `destination` | `create`, `update`, `delete`, `rotate_secret` |
+| `destination` | `create`, `update`, `delete`, `rotate_secret` (all kinds: `http`, `agent`, `tool`) |
 | `route` | `create`, `update`, `delete`, `enable`, `disable` |
 | `event` | `replay` |
 | `delivery` | `replay` |

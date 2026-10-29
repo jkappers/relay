@@ -2,7 +2,7 @@
 
 Relay is an event-ingest service. Providers like Slack and Discord send it events. Relay checks each event's signature, saves it, and puts it on a queue. A worker picks it up from there.
 
-Milestones 1 to 6 are done: ingest, routing, signed HTTP delivery with retries, actions (reply, react, and more) with a loop guard, agent destinations that run Claude on an event, a web console, user accounts with each connection as its own tenant, SMS through Twilio, and classifier routing (an LLM gate that can only narrow matched routes).
+Milestones 1 to 11 are done: ingest, routing, signed HTTP delivery with retries, actions (reply, react, and more) with a loop guard, agent destinations that run Claude on an event, a web console, user accounts with each connection as its own tenant, SMS through Twilio, classifier routing (an LLM gate that can only narrow matched routes), and tool destinations (operator-registered HTTP tools an agent can call).
 
 ## How an event flows
 
@@ -138,7 +138,7 @@ Console API. Everything needs a session except signing in and signing up.
 | `GET /api/connections/slack-url` | Where to start Slack OAuth. |
 | `GET /api/connections/providers` | `{slack, discord}`: the install start URL for each, or null when its app settings are missing. |
 | `POST /api/tokens/revoke` | Revoke a reply token by `jti`. |
-| `/api/c/:connectionId/*` | Everything else, inside one connection: `overview`, `events`, `events/facets`, `events/:id`, `events/:id/replay`, `deliveries`, `deliveries/:id/replay`, `routes`, `routes/preview`, `routes/:id` (and `enable`, `disable`), `events/:id/decision`, `classifier` (`GET`, and `PUT {mode, dailyLimit}`), `destinations`, `destinations/:id`, `destinations/:id/rotate-secret`, `revoke`. |
+| `/api/c/:connectionId/*` | Everything else, inside one connection: `overview`, `events`, `events/facets`, `events/:id`, `events/:id/replay`, `deliveries`, `deliveries/:id/replay`, `routes`, `routes/preview`, `routes/:id` (and `enable`, `disable`), `events/:id/decision`, `classifier` (`GET`, and `PUT {mode, dailyLimit}`), `destinations`, `destinations/:id`, `destinations/:id/rotate-secret`, `revoke`. `POST destinations` takes `kind` `http`, `agent`, or `tool`; `http` and `tool` return their signing secret once. |
 
 If you are not a member of the connection, or an id belongs to another connection, the answer is 404.
 | `GET /metrics` | Prometheus text. See `docs/metrics.md`. |
@@ -157,7 +157,8 @@ The console does most of what these do. Run from the repo root with `pnpm --filt
 | `tenancy:adopt --email E --connection C` | One-time upgrade from before accounts. See below. |
 | `connections:create-webhook --owner E [--name N]` | Creates a webhook connection owned by E. Prints its id and secret once. |
 | `destinations:create --connection C --name N --url U [--max-attempts 8] [--timeout-ms 10000] [--allowed-actions reply,react]` | Creates an HTTP destination. Prints its id and signing secret once. |
-| `destinations:create --connection C --kind agent --name N --system-prompt-file F [--model M] [--max-turns 8] [--timeout-seconds 300] [--max-mutating-actions 3] [--allowed-actions thread.history,reply]` | Creates an agent destination. See Agents. |
+| `destinations:create --connection C --kind agent --name N --system-prompt-file F [--model M] [--max-turns 8] [--timeout-seconds 300] [--max-mutating-actions 3] [--allowed-actions thread.history,reply] [--tool-destinations ID,ID]` | Creates an agent destination. See Agents. |
+| `destinations:create --connection C --kind tool --name N --url U --tool-name T --description D --params-file F [--read-only] [--sensitive] [--timeout-ms 10000] [--max-response-bytes 32768]` | Creates a tool destination. `F` holds the params JSON Schema. Prints its id and signing secret once. See Tool destinations. |
 | `agent-runs:list [--status failed]` | Lists the 100 newest agent runs: id, delivery, status, turns, tokens, cost. |
 | `routes:create --connection C --name N --event-type T --destination ID [--destination ID...] [--contains S] [--regex R] [--include-subtypes] [--actor-in ID,ID...] [--selection always\|classifier] [--intent TEXT] [--fallback drop\|deliver]` | Creates a route. Every destination must be in connection C. `--actor-in` takes commas or repeats. `--selection classifier` needs `--intent`. |
 | `routes:list` | Lists routes, with their actor list and classifier fields. |
@@ -229,7 +230,8 @@ Config (stored on the destination):
 | `model` | `claude-sonnet-5-5` | Model ID. |
 | `maxTurns` | 8 | Most tool round trips per run. |
 | `timeoutSeconds` | 300 | Wall-clock limit per run. |
-| `maxMutatingActions` | 3 | Most Slack changes (reply, post, react, update) per run. Past that, tools return an error. |
+| `maxMutatingActions` | 3 | Most changes per run: Slack or Discord changes (reply, post, react, update) plus calls to mutating tool destinations. Past that, tools return an error. |
+| `toolDestinationIds` | `[]` | Tool destinations (same connection only) the agent may call. See Tool destinations. |
 
 `--allowed-actions` picks which tools exist. An action that is not allowed is not offered to the agent at all.
 
@@ -239,13 +241,34 @@ How a run goes: the dispatcher queues an `agent` job. The delivery stays `pendin
 
 Anyone who can message you controls the event text, so **prompt injection is expected**. The design assumes the model may obey it. What holds even then:
 
-- The agent has no shell, files, web, or other Claude Code tools. Only relay's action tools exist, and a tool the destination does not allow is missing.
+- The agent has no shell, files, web, or other Claude Code tools. Only relay's action tools and the tool destinations you attached exist, and a tool the destination does not allow is missing.
 - It loads none of your settings, CLAUDE.md, MCP servers, hooks, or skills. It runs in an empty temp directory with a minimal environment.
 - It cannot pick a channel or thread. Every action goes to the source event's thread, as in Actions above.
 - It is capped by turns, time, and Slack changes per run.
 - The prompt tells the model the event is untrusted data, and so are tool results (`thread_history` returns other people's messages). That helps, but it is not the main control.
 
 What can still happen: a crafted message may make the agent post an unwanted reply in that same thread, as you, up to the cap. Pick a prompt, a small `--allowed-actions` list, and a low cap with that in mind. Replies appear publicly as you.
+
+### Tool destinations
+
+A `tool` destination is an HTTP endpoint you register in a connection. An agent destination in the same connection can list it in `toolDestinationIds`, and the agent can then call it as one tool. It is not an MCP server: you write the name, description, and params, and the worker makes the call. Design: `docs/adr/0010-tool-destinations.md`.
+
+| Field | Default | Meaning |
+|---|---|---|
+| `url` | required | http or https. Fixed. The model can never change it. |
+| `toolName` | required | Lowercase slug, max 48. Unique in the connection. Relay action names (`reply`, `thread_history`, ...) are reserved. |
+| `description` | required | What the model is told the tool does. |
+| `params` | required | JSON Schema subset: `{type: "object", properties, required?}` with `string`, `number`, `integer`, `boolean` (optional `enum`, length and range limits), or an `array` of those (max 50 items). Max 20 params. Anything else is rejected when you save. |
+| `mutating` | true | Counts toward `maxMutatingActions` and sets the run's changed flag (no rerun after it). |
+| `sensitive` | false | Offered only when the route that made the delivery has an `actor_in` list that holds the event's actor. |
+| `timeoutMs` | 10000 | Max 30000. |
+| `maxResponseBytes` | 32768 | Max 262144. A bigger response is an error. |
+
+Each call is `POST <url>` with JSON `{tool: {name, call}, args, event, delivery: {id}, run: {id}}` (`event` is the envelope without `raw`). Headers are the ones in [Verify a delivery](#verify-a-delivery), signed the same way with the tool's own secret, plus `Relay-Run-Id`, `Relay-Tool`, and `Idempotency-Key` (`agent:<runId>:<n>` for mutating calls, `agent:<runId>:r<n>` for read-only ones). Dedupe on that key. Redirects are not followed. Answer 2xx with any body; the model sees it (up to 16000 chars) as untrusted data. On any other answer the model sees only `error: http_4xx (404)` and the like.
+
+Mutating calls are logged in `actions_log` as type `tool:<toolName>`, so they show with the event's actions in the console. A timeout, network error, 5xx, or oversize 2xx on a mutating call counts as a change, since relay cannot know whether the endpoint acted.
+
+Treat every arg as attacker-controlled: event text can steer the agent to call the tool with anything the schema allows. Verify the signature, validate args, and mark anything risky `sensitive` with an `actor_in` route.
 
 ### Cost and limits
 
