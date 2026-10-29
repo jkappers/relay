@@ -11,7 +11,8 @@
     "deliveries:list": "node --env-file-if-exists=../../.env --import tsx src/cli/deliveries-list.ts",
     "deliveries:replay": "node --env-file-if-exists=../../.env --import tsx src/cli/deliveries-replay.ts",
     "tokens:revoke": "node --env-file-if-exists=../../.env --import tsx src/cli/tokens-revoke.ts",
-    "events:replay": "node --env-file-if-exists=../../.env --import tsx src/cli/events-replay.ts"
+    "events:replay": "node --env-file-if-exists=../../.env --import tsx src/cli/events-replay.ts",
+    "agent-runs:list": "node --env-file-if-exists=../../.env --import tsx src/cli/agent-runs-list.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.1.5",
