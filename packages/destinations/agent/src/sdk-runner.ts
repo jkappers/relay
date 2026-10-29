@@ -57,7 +57,7 @@ export function createSdkRunner(deps: SdkRunnerDeps = {}): AgentRunner {
               const r = await t.call(args as Record<string, unknown>)
               return { content: [{ type: 'text' as const, text: r.text }], ...(r.isError ? { isError: true } : {}) }
             },
-            { annotations: { readOnlyHint: !t.mutating, openWorldHint: false } },
+            { annotations: { readOnlyHint: !t.mutating, openWorldHint: t.kind === 'tool' } },
           ),
         ),
       })

@@ -43,7 +43,12 @@ export function buildSandboxEnv(input: { cwd: string; apiKey: string; pathEnv?: 
 
 const DENY_REASON = 'Only Relay tools are available in this run.'
 
+const TOOL_NAME = /^[a-z][a-z0-9_]{0,63}$/
+
 export function buildSdkOptions(input: SdkOptionsInput): Options {
+  const bad = input.toolNames.find((n) => !TOOL_NAME.test(n))
+  if (bad !== undefined) throw new Error(`invalid tool name: ${bad.slice(0, 80)}`)
+  if (new Set(input.toolNames).size !== input.toolNames.length) throw new Error('duplicate tool name')
   const allowedTools = input.toolNames.map(mcpToolName)
   const allowSet = new Set(allowedTools)
 

@@ -2,13 +2,26 @@ import { and, eq, like, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
   computeAllowed,
+  exampleToolArgs,
   schema,
+  toolParamsToZodShape,
+  type Envelope,
   type ActionExecutor,
   type ActionResult,
   type ExecuteHooks,
   type Db,
   type ProviderRuntime,
 } from '@relay/core'
+import {
+  callToolDestination,
+  preflightToolCall,
+  renderToolError,
+  renderToolSuccess,
+  toolRequestBody,
+  type ToolDestinationOutcome,
+  type ToolDestinationSpec,
+  type ToolResponse,
+} from './tool-destination'
 import type { AgentToolDef, AgentToolResult } from './types'
 
 export const MAX_TOOL_RESULT_CHARS = 100_000
@@ -33,6 +46,7 @@ export interface ToolCallRecord {
   status: ToolOutcome
   error?: string
   result?: unknown
+  destinationId?: string
 }
 
 export interface ToolkitDeps {
@@ -45,6 +59,14 @@ export interface ToolkitDeps {
   maxMutatingActions: number
   signal: AbortSignal
   onToolCall?: (type: string, outcome: ToolOutcome) => void
+  /** Already checked by the caller: same connection, enabled, and allowed for this actor. */
+  toolDestinations?: readonly ToolDestinationSpec[]
+  envelope?: Envelope
+  eventId?: string
+  fetch?: typeof fetch
+  nowSeconds?: () => number
+  onToolDestinationCall?: (outcome: ToolDestinationOutcome) => void
+  onToolWithheld?: (reason: 'name_collision') => void
 }
 
 export interface Toolkit {
@@ -95,9 +117,9 @@ export async function createToolkit(deps: ToolkitDeps): Promise<Toolkit> {
     await tx.update(schema.agentRuns).set({ mutated: true }).where(eq(schema.agentRuns.id, deps.runId))
   }
 
-  const record = (rec: Omit<ToolCallRecord, 'n'>) => {
+  const record = (rec: Omit<ToolCallRecord, 'n'>, metricType = rec.type) => {
     calls.push({ n: calls.length + 1, ...rec })
-    deps.onToolCall?.(rec.type, rec.status)
+    deps.onToolCall?.(metricType, rec.status)
   }
 
   const tools: AgentToolDef[] = []
@@ -146,6 +168,117 @@ export async function createToolkit(deps: ToolkitDeps): Promise<Toolkit> {
       call(args) {
         const p = run(args).catch((): AgentToolResult => {
           record({ type: action, params: args, status: 'failed', error: 'internal_error' })
+          return { isError: true, text: 'error: internal_error' }
+        })
+        inflight.add(p)
+        void p.finally(() => inflight.delete(p))
+        return p
+      },
+    })
+  }
+
+  const doFetch = deps.fetch ?? fetch
+  const nowSeconds = deps.nowSeconds ?? (() => Math.floor(Date.now() / 1000))
+  const { raw: _raw, ...event } = deps.envelope ?? ({ raw: null } as unknown as Envelope)
+  const taken = new Set(tools.map((t) => t.name))
+  let readCalls = 0
+
+  for (const spec of deps.toolDestinations ?? []) {
+    const name = spec.config.toolName
+    if (taken.has(name)) {
+      deps.onToolWithheld?.('name_collision')
+      continue
+    }
+    taken.add(name)
+    const shape = toolParamsToZodShape(spec.config.params)
+    const argsSchema = z.object(shape).strict()
+    const type = `tool:${name}`
+    const done = (rec: Omit<ToolCallRecord, 'n' | 'type' | 'destinationId'>, outcome: ToolDestinationOutcome) => {
+      record({ type, destinationId: spec.id, ...rec }, 'tool')
+      deps.onToolDestinationCall?.(outcome)
+    }
+
+    const run = async (rawArgs: Record<string, unknown>): Promise<AgentToolResult> => {
+      if (closed || deps.signal.aborted) {
+        done({ params: rawArgs, status: 'denied', error: 'run_closed' }, 'blocked')
+        return { isError: true, text: 'error: this run has ended' }
+      }
+      const parsed = argsSchema.safeParse(rawArgs)
+      if (!parsed.success) {
+        const where = [...new Set(parsed.error.issues.map((i) => i.path.join('.') || 'args'))].slice(0, 5).join(', ')
+        done({ params: rawArgs, status: 'failed', error: 'invalid_args' }, 'invalid')
+        return { isError: true, text: `error: invalid arguments (${where})` }
+      }
+      const args = parsed.data as Record<string, unknown>
+      const mutating = spec.config.mutating
+      if (mutating && mutatingCalls >= deps.maxMutatingActions) {
+        done({ params: args, status: 'cap_reached' }, 'blocked')
+        return { isError: true, text: `error: limit reached, at most ${deps.maxMutatingActions} changes per run. Stop and finish.` }
+      }
+      const n = mutating ? ++mutatingCalls : ++readCalls
+      const req = {
+        deliveryId: deps.deliveryId,
+        eventId: deps.eventId ?? '',
+        runId: deps.runId,
+        call: n,
+        idempotencyKey: mutating ? `agent:${deps.runId}:${n}` : `agent:${deps.runId}:r${n}`,
+        args,
+        event: event as Omit<Envelope, 'raw'>,
+      }
+      const body = toolRequestBody(spec, req)
+      const opts = { fetch: doFetch, nowSeconds, signal: deps.signal }
+
+      let res: ToolResponse | null = preflightToolCall(spec, body)
+      if (res) {
+        if (mutating) mutatingCalls--
+      } else if (!mutating) {
+        res = await callToolDestination(spec, body, req, opts)
+      } else {
+        const [logged] = await db
+          .insert(schema.actionsLog)
+          .values({ deliveryId: deps.deliveryId, idempotencyKey: req.idempotencyKey, type, params: args, status: 'pending' })
+          .onConflictDoNothing({ target: [schema.actionsLog.deliveryId, schema.actionsLog.idempotencyKey] })
+          .returning({ id: schema.actionsLog.id })
+        if (!logged) {
+          done({ params: args, status: 'failed', error: 'idempotency_key_conflict' }, 'blocked')
+          return { isError: true, text: 'error: internal_error' }
+        }
+        const r = await callToolDestination(spec, body, req, opts)
+        res = r
+        const at = new Date()
+        const acted = r.outcome === 'ok' || (r.sent && r.outcome !== 'http_3xx' && r.outcome !== 'http_4xx')
+        await db.transaction(async (tx) => {
+          await tx
+            .update(schema.actionsLog)
+            .set(
+              r.outcome === 'ok'
+                ? { status: 'succeeded', result: { status: r.status }, error: null, updatedAt: at }
+                : { status: 'failed', error: r.status !== null ? `${r.outcome}:${r.status}` : r.outcome, updatedAt: at },
+            )
+            .where(eq(schema.actionsLog.id, logged.id))
+          if (acted) await markMutated(tx, type)
+        })
+      }
+
+      if (res.outcome === 'ok') {
+        done({ params: args, status: 'succeeded', result: { status: res.status } }, 'ok')
+        return { isError: false, text: renderToolSuccess(name, res.text) }
+      }
+      done({ params: args, status: 'failed', error: res.outcome, ...(res.status !== null ? { result: { status: res.status } } : {}) }, res.outcome)
+      return { isError: true, text: renderToolError(res) }
+    }
+
+    tools.push({
+      name,
+      action: type,
+      kind: 'tool',
+      description: spec.config.description,
+      shape,
+      mutating: spec.config.mutating,
+      example: exampleToolArgs(spec.config.params),
+      call(args) {
+        const p = run(args).catch((): AgentToolResult => {
+          done({ params: args, status: 'failed', error: 'internal_error' }, 'error')
           return { isError: true, text: 'error: internal_error' }
         })
         inflight.add(p)

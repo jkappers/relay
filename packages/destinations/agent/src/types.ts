@@ -11,6 +11,10 @@ export interface AgentToolDef {
   description: string
   shape: z.ZodRawShape
   mutating: boolean
+  /** `tool` for a tool destination. Relay actions leave it unset. */
+  kind?: 'action' | 'tool'
+  /** Valid sample args for a tool destination. Used by the fake runner. */
+  example?: Record<string, unknown>
   call(args: Record<string, unknown>): Promise<AgentToolResult>
 }
 
