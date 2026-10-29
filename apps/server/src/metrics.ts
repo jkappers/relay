@@ -1,4 +1,4 @@
-import { MetricsRegistry } from '@relay/core'
+import { createActionCounters, MetricsRegistry } from '@relay/core'
 
 export const INGRESS_OUTCOMES = [
   'accepted',
@@ -15,6 +15,12 @@ export type IngressOutcome = (typeof INGRESS_OUTCOMES)[number]
 export function createServerMetrics(registry = new MetricsRegistry()) {
   return {
     registry,
+    ...createActionCounters(registry),
+    replyTokensRejected: registry.counter(
+      'relay_reply_tokens_rejected_total',
+      'Reply tokens rejected by /actions, by reason.',
+      ['reason'] as const,
+    ),
     ingressRequests: registry.counter(
       'relay_ingress_requests_total',
       'Inbound provider requests by outcome.',

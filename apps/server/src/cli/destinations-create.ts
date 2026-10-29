@@ -8,6 +8,7 @@ await runCli(async ({ db, config }) => {
       url: { type: 'string' },
       'max-attempts': { type: 'string' },
       'timeout-ms': { type: 'string' },
+      'allowed-actions': { type: 'string' },
     },
   })
   const cipher = await createCipher(config.RELAY_MASTER_KEY)
@@ -16,6 +17,7 @@ await runCli(async ({ db, config }) => {
     url: values.url ?? '',
     ...(values['max-attempts'] ? { maxAttempts: intOpt(values['max-attempts'])! } : {}),
     ...(values['timeout-ms'] ? { timeoutMs: intOpt(values['timeout-ms'])! } : {}),
+    ...(values['allowed-actions'] ? { allowedActions: values['allowed-actions'].split(',').map((a) => a.trim()).filter(Boolean) } : {}),
   })
   console.log(`destination id: ${destination.id}`)
   console.log(`secret:         ${secret}`)
