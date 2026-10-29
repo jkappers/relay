@@ -22,6 +22,7 @@ export const createDestinationInput = z.object({
     .refine((u) => /^https?:\/\//.test(u), 'must be http or https'),
   maxAttempts: z.number().int().min(1).max(50).default(8),
   timeoutMs: z.number().int().min(100).max(120_000).default(10_000),
+  allowedActions: z.array(z.string().min(1)).nullable().default(null),
 })
 export type CreateDestinationInput = z.input<typeof createDestinationInput>
 
@@ -39,6 +40,7 @@ export async function createDestination(
       url: parsed.url,
       maxAttempts: parsed.maxAttempts,
       timeoutMs: parsed.timeoutMs,
+      allowedActions: parsed.allowedActions,
       secretCiphertext: cipher.encrypt(secret),
     })
     .returning()

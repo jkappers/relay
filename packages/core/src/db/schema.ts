@@ -79,6 +79,7 @@ export const destinations = pgTable('destinations', {
   enabled: boolean('enabled').notNull().default(true),
   maxAttempts: integer('max_attempts').notNull().default(8),
   timeoutMs: integer('timeout_ms').notNull().default(10000),
+  allowedActions: text('allowed_actions').array(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
@@ -133,12 +134,55 @@ export const deliveries = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     completedAt: timestamp('completed_at', { withTimezone: true }),
+    lastReplyJti: text('last_reply_jti'),
+    actionsDoneAt: timestamp('actions_done_at', { withTimezone: true }),
   },
   (t) => [
     uniqueIndex('deliveries_event_route_destination_uq').on(t.eventId, t.routeId, t.destinationId),
     index('deliveries_status_idx').on(t.status, t.createdAt),
   ],
 )
+
+export const actionStatus = pgEnum('action_status', ['pending', 'succeeded', 'failed'])
+
+export const actionsLog = pgTable(
+  'actions_log',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    deliveryId: uuid('delivery_id')
+      .notNull()
+      .references(() => deliveries.id),
+    idempotencyKey: text('idempotency_key').notNull(),
+    type: text('type').notNull(),
+    params: jsonb('params').notNull(),
+    status: actionStatus('status').notNull().default('pending'),
+    result: jsonb('result'),
+    error: text('error'),
+    attempts: integer('attempts').notNull().default(1),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('actions_log_delivery_key_uq').on(t.deliveryId, t.idempotencyKey)],
+)
+
+export const sentMessages = pgTable(
+  'sent_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => connections.id, { onDelete: 'cascade' }),
+    channel: text('channel').notNull(),
+    ts: text('ts').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('sent_messages_connection_channel_ts_uq').on(t.connectionId, t.channel, t.ts)],
+)
+
+export const revokedTokens = pgTable('revoked_tokens', {
+  jti: text('jti').primaryKey(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }).notNull().defaultNow(),
+})
 
 export type ConnectionRow = typeof connections.$inferSelect
 export type EventRow = typeof events.$inferSelect

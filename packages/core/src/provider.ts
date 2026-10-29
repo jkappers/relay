@@ -1,3 +1,5 @@
+import type { z } from 'zod'
+import type { Credentials } from './connections'
 import type { Envelope } from './envelope'
 
 export type ProviderId = 'slack' | 'webhook'
@@ -45,8 +47,6 @@ export interface OAuthConfig {
   userScopes: readonly string[]
 }
 
-export type ActionHandler = (ctx: { envelope: Envelope; connection: Connection }, params: unknown) => Promise<unknown>
-
 export interface ProviderAdapter {
   id: ProviderId
   oauth?: OAuthConfig
@@ -60,12 +60,52 @@ export interface ProviderAdapter {
   dedupKey(input: ResolvedInput): string
   /** Envelope without `raw`; raw lives in events.raw. */
   normalize(input: NormalizeInput): Omit<Envelope, 'raw'>
-  /** M3. */
-  actions: Record<string, ActionHandler>
-  /** M3. */
+}
+
+export class ActionError extends Error {
+  override name = 'ActionError'
+  constructor(
+    readonly code: string,
+    readonly retryable: boolean,
+    readonly retryAfterMs: number | null = null,
+  ) {
+    super(code)
+  }
+}
+
+export interface ActionContext {
+  envelope: Envelope
+  connection: Connection
+  credentials: Credentials
+  fetch: typeof fetch
+}
+
+export interface ActionOutput {
+  result: unknown
+  /** A message the action posted. Recorded in sent_messages with the action's log row. */
+  sentMessage?: { channel: string; ts: string }
+}
+
+export interface ActionDef<S extends z.ZodType = z.ZodType> {
+  mutating: boolean
+  params: S
+  run(ctx: ActionContext, params: z.output<S>): Promise<ActionOutput>
+}
+
+export function defineAction<S extends z.ZodType>(def: ActionDef<S>): ActionDef {
+  return def as unknown as ActionDef
+}
+
+/** What the worker and the /actions route need. Holds no ingress secrets. */
+export interface ProviderRuntime {
+  id: ProviderId
+  actions: Record<string, ActionDef>
   isSelfEcho(envelope: Envelope, connection: Connection): Promise<boolean>
 }
 
-export const notImplemented = (what: string) => async (): Promise<never> => {
-  throw new Error(`${what} is not implemented yet`)
+/** Destination allow-list (null = all) intersected with what the runtime offers. */
+export function computeAllowed(runtime: ProviderRuntime | undefined, destinationAllowed: readonly string[] | null): string[] {
+  if (!runtime) return []
+  const names = Object.keys(runtime.actions)
+  return destinationAllowed ? names.filter((n) => destinationAllowed.includes(n)) : names
 }
