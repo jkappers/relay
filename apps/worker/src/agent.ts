@@ -74,7 +74,7 @@ export function createAgentHandler(deps: AgentHandlerDeps) {
     return took ?? null
   }
 
-  // A mutating action that is pending may already have reached Slack (lost response), so it counts.
+  // A mutating action that is pending may already have reached the provider (lost response), so it counts.
   async function mayHaveMutated(run: schema.AgentRunRow): Promise<boolean> {
     const [fresh] = await db.select({ mutated: runs.mutated }).from(runs).where(eq(runs.id, run.id))
     if (fresh?.mutated) return true
@@ -261,7 +261,7 @@ export function createAgentHandler(deps: AgentHandlerDeps) {
       aborted.catch(() => {})
       const running = deps.runner.run({
         model: config.model,
-        systemPrompt: buildSystemPrompt(config.systemPrompt, toolkit.tools, config.maxMutatingActions),
+        systemPrompt: buildSystemPrompt(config.systemPrompt, toolkit.tools, config.maxMutatingActions, event.provider),
         prompt: buildUserPrompt(event.envelope as Envelope, toolkit.tools.some((t) => t.action === 'thread.history')),
         maxTurns: config.maxTurns,
         tools: toolkit.tools,

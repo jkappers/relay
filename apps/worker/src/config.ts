@@ -6,6 +6,12 @@ export const workerEnvSchema = coreEnvSchema
     PUBLIC_URL: z.url().transform((u) => u.replace(/\/+$/, '')),
     SLACK_API_BASE_URL: z.url().default('https://slack.com/api'),
     SMS_API_BASE_URL: z.url().default('https://api.twilio.com'),
+    // Discord actions need the app's bot token. Without it they fail with no_credentials.
+    DISCORD_BOT_TOKEN: z
+      .string()
+      .optional()
+      .transform((v) => (v && v.trim() ? v.trim() : undefined)),
+    DISCORD_API_BASE_URL: z.url().default('https://discord.com/api/v10'),
     REPLY_TOKEN_TTL_SECONDS: z.coerce.number().int().min(1).default(3600),
     WORKER_METRICS_PORT: z.coerce.number().int().min(1).max(65535).default(9465),
     DISPATCH_BACKOFF_BASE_MS: z.coerce.number().int().min(1).default(5_000),

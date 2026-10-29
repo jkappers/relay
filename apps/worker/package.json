@@ -8,6 +8,7 @@
   "dependencies": {
     "@relay/core": "workspace:*",
     "@relay/destination-agent": "workspace:*",
+    "@relay/provider-discord": "workspace:*",
     "@relay/provider-slack": "workspace:*",
     "@relay/provider-sms": "workspace:*",
     "@relay/provider-webhook": "workspace:*",

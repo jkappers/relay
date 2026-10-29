@@ -17,6 +17,7 @@ import {
   type RouteJob,
 } from '@relay/core'
 import { createDemoRunner, createSdkRunner } from '@relay/destination-agent'
+import { createDiscordRuntime } from '@relay/provider-discord'
 import { createSlackRuntime } from '@relay/provider-slack'
 import { createSmsRuntime } from '@relay/provider-sms'
 import { createWebhookRuntime } from '@relay/provider-webhook'
@@ -45,6 +46,7 @@ async function main() {
     slack: createSlackRuntime({ db, apiBase: config.SLACK_API_BASE_URL }),
     webhook: createWebhookRuntime(),
     sms: createSmsRuntime({ db, apiBase: config.SMS_API_BASE_URL }),
+    discord: createDiscordRuntime({ db, botToken: config.DISCORD_BOT_TOKEN, apiBase: config.DISCORD_API_BASE_URL }),
   }
   const route = createRouter({ db, queue, metrics, runtimes })
   const execute = createActionExecutor({

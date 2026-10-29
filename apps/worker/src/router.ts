@@ -53,7 +53,7 @@ export function createRouter(deps: RouterDeps) {
     }
     // The echo can arrive before the action commits its sent_messages row. Look once more after a delay.
     const ageMs = Date.now() - event.receivedAt.getTime()
-    if (!job.recheck && envelope.actor !== null && envelope.actor === connection.userId && ageMs < (deps.recheckMaxAgeMs ?? 30_000)) {
+    if (!job.recheck && runtime?.echoRecheck !== false && envelope.actor !== null && envelope.actor === connection.userId && ageMs < (deps.recheckMaxAgeMs ?? 30_000)) {
       await queue.send<RouteJob>(
         QUEUES.route,
         { eventId: event.id, recheck: true },
