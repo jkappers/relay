@@ -105,6 +105,27 @@ export interface EventSummary {
   routedAt: string | null
   deliveryCount: number
   failedCount: number
+  trace: EventTrace
+}
+
+export interface StatusCounts {
+  pending: number
+  succeeded: number
+  failed: number
+}
+
+export type RoutedState = 'pending' | 'inactive' | 'echo' | 'routed' | 'unmatched'
+
+export interface EventTrace {
+  routed: RoutedState
+  deliveries: StatusCounts
+  actions: StatusCounts
+  failedDelivery: { id: string; lastError: string | null } | null
+}
+
+export interface EventPage {
+  items: EventSummary[]
+  nextCursor: string | null
 }
 
 export interface DeliveryRow {
@@ -123,7 +144,31 @@ export interface DeliveryRow {
   lastReplyJti: string | null
   routeName: string
   destinationName: string
+  destinationKind?: 'http' | 'agent'
   eventType?: string
+}
+
+export interface ActionRow {
+  id: string
+  type: string
+  status: 'pending' | 'succeeded' | 'failed'
+  attempts: number
+  error: string | null
+  createdAt: string
+  [key: string]: unknown
+}
+
+export interface AgentRunRow {
+  id: string
+  status: 'running' | 'succeeded' | 'failed'
+  turns: number
+  inputTokens: number
+  outputTokens: number
+  costUsd: string
+  error: string | null
+  startedAt: string
+  finishedAt: string | null
+  [key: string]: unknown
 }
 
 export interface EventDetail {
@@ -132,14 +177,15 @@ export interface EventDetail {
   connectionId: string
   receivedAt: string
   routedAt: string | null
+  dedupKey: string
   state: 'pending' | 'skipped_inactive' | 'skipped_echo' | 'routed' | 'unmatched'
   echo: boolean
   routed: boolean
   envelope: unknown
   raw: unknown
   deliveries: DeliveryRow[]
-  actions: Record<string, unknown>[]
-  agentRuns: Record<string, unknown>[]
+  actions: ActionRow[]
+  agentRuns: AgentRunRow[]
 }
 
 export interface Overview {
