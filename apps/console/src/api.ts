@@ -24,6 +24,7 @@ export class ApiError extends Error {
 
 export const UNAUTHORIZED_EVENT = 'relay:unauthorized'
 export const CONNECTIONS_CHANGED_EVENT = 'relay:connections-changed'
+export const connectionsChanged = () => window.dispatchEvent(new Event(CONNECTIONS_CHANGED_EVENT))
 
 let tenant: string | null = null
 

@@ -1,8 +1,9 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
-import { ApiError, del, get, post, put } from '../api'
+import { ApiError, connectionsChanged, del, get, post, put } from '../api'
 import { Async, ConfirmButton, CopyId, cx, Details, Field, FormError, Notice, Page, SkeletonRows, Time } from '../components'
 import { errorText, useLoad } from '../hooks'
 import { Icon } from '../icons'
+import { ACTIONS, FIELD_GRID, FORM } from './new/layout'
 import {
   badgeOf,
   BADGE_TEXT,
@@ -36,7 +37,6 @@ import {
   validationText,
 } from '../integrations'
 import { Lamp } from '../trace'
-import { connectionsChanged } from './Connections'
 
 const fmt = (iso: string) => new Date(iso).toLocaleString()
 const TONE_TEXT: Record<Tone, string> = { ok: 'text-ok-ink', warn: 'text-warn-ink', bad: 'text-bad-ink', off: 'text-ink-3' }
@@ -267,8 +267,7 @@ function SettingsForm({ view, onSaved }: { view: ProviderView; onSaved: () => vo
       : 'One Discord user ID per line, like 123456789012345678. First turn on Developer Mode in Discord (User Settings, Advanced, Developer Mode). Then right-click the person and choose Copy User ID.'
 
   return (
-    <form onSubmit={submit} aria-label={`${name} settings`} className="flex flex-col gap-3">
-      <div className="grid gap-3 md:grid-cols-3">
+    <form onSubmit={submit} aria-label={`${name} settings`} className={FORM}>
         <Field label="Client ID" hint={p === 'discord' ? 'Same as the Application ID.' : undefined}>
           {(fp) => (
             <input
@@ -282,6 +281,7 @@ function SettingsForm({ view, onSaved }: { view: ProviderView; onSaved: () => vo
             />
           )}
         </Field>
+      <div className={FIELD_GRID}>
         {SECRET_FIELDS[p].map((field) => {
           const mode = secretMode(view, field)
           const info = view.secrets[field]
@@ -338,7 +338,7 @@ function SettingsForm({ view, onSaved }: { view: ProviderView; onSaved: () => vo
         </fieldset>
       </Details>
       <FormError error={error} />
-      <div>
+      <div className={ACTIONS}>
         <button className="btn btn-primary" disabled={busy}>
           <Icon name="check" className="size-3.5" />
           {busy ? 'Saving…' : 'Save'}
@@ -353,7 +353,7 @@ function SettingsForm({ view, onSaved }: { view: ProviderView; onSaved: () => vo
 
 const saveError = (err: unknown) => (err instanceof ApiError && err.status === 400 ? validationText(err.body) : null) ?? errorText(err)
 
-function ProviderCard({ view, onChanged }: { view: ProviderView; onChanged: () => void }) {
+export function ProviderCard({ view, onChanged, bare }: { view: ProviderView; onChanged: () => void; bare?: boolean }) {
   const p = view.provider
   const name = PROVIDER_NAME[p]
   const badge = badgeOf(view)
@@ -387,7 +387,7 @@ function ProviderCard({ view, onChanged }: { view: ProviderView; onChanged: () =
   }
 
   return (
-    <section aria-labelledby={`${p}-title`} className="flex flex-col gap-3 rounded-ctl border border-line bg-raised p-4">
+    <section aria-labelledby={`${p}-title`} className={cx('flex flex-col gap-4', !bare && 'rounded-ctl border border-line bg-raised p-4')}>
       <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <h2 id={`${p}-title`} className="font-semibold">

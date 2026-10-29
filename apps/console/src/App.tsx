@@ -6,11 +6,13 @@ import { Icon, RelayMark, type IconName } from './icons'
 import { Onboarding } from './pages/Onboarding'
 import { jackCode, lineLabel } from './patch'
 import { Lamp } from './trace'
-import { Connections, type Viewer } from './pages/Connections'
+import { isNewPath, type Viewer } from './connect-wizard'
+import { Connections } from './pages/Connections'
 import { Deliveries } from './pages/Deliveries'
 import { Destinations } from './pages/Destinations'
 import { EventPanel, Events } from './pages/Events'
 import { Integrations } from './pages/Integrations'
+import { NewFlow } from './pages/new'
 import { Login } from './pages/Login'
 import { Overview } from './pages/Overview'
 import { Routes } from './pages/Routes'
@@ -28,7 +30,7 @@ const NAV: readonly (readonly [string, string, IconName])[] = [
 function view(path: string, open: string | null, viewer: Viewer) {
   switch (path) {
     case '/connections':
-      return <Connections viewer={viewer} />
+      return <Connections />
     case '/destinations':
       return <Destinations />
     case '/routes':
@@ -104,7 +106,7 @@ function Switcher({ connections, current }: { connections: Connection[]; current
             </li>
           ))}
         </ul>
-        <a href={`#/c/${current.id}/connections`} className="mt-1 flex h-7 items-center gap-2 border-t border-rule px-2 pt-1 text-xs font-medium no-underline">
+        <a href="#/new" className="mt-1 flex h-7 items-center gap-2 border-t border-rule px-2 pt-1 text-xs font-medium no-underline">
           <Icon name="plus" className="size-3" />
           Add a connection
         </a>
@@ -118,8 +120,11 @@ export function App() {
   const { connectionId: pathTenant, inner } = splitTenant(path)
   const [session, setSession] = useState<Session | null>(null)
   const [signup, setSignup] = useState<SignupMode>('closed')
-  const account = path === '/settings' && session?.user.isAdmin === true
+  const settings = path === '/settings' && session?.user.isAdmin === true
+  const newFlow = isNewPath(path)
+  const account = settings || newFlow
   const lastTenant = useRef<string | null>(null)
+  const refreshed = useRef(new Set<string>())
   const pathConnection = session?.connections.find((c) => c.id === pathTenant) ?? null
   if (pathConnection) lastTenant.current = pathConnection.id
   const tenant = account
@@ -175,12 +180,18 @@ export function App() {
       if (!session.user.isAdmin) navigate(first ? `/c/${first.id}` : '/')
       return
     }
+    if (isNewPath(path)) return
+    if (pathTenant && !pathConnection && !refreshed.current.has(pathTenant)) {
+      refreshed.current.add(pathTenant)
+      check()
+      return
+    }
     if (!first) {
       if (path !== '/') navigate('/')
       return
     }
     if (!tenant) navigate(`/c/${first.id}${path === '/login' || pathTenant ? '' : path === '/' ? '' : path}`)
-  }, [authed, path, session, first, tenant, pathTenant])
+  }, [authed, path, session, first, tenant, pathTenant, pathConnection, check])
 
   useEffect(() => {
     setMenuOpen(false)
@@ -260,7 +271,7 @@ export function App() {
           <div id="rail-nav" className={cx('flex-1 flex-col justify-between gap-6 px-2 pb-3 md:flex', menuOpen ? 'flex' : 'hidden')}>
             <nav aria-label="Main">
               {tenant ? null : (
-                <a href="#/" className="flex h-7 items-center gap-2.5 rounded-ctl px-2 font-medium text-ink-2 no-underline hover:bg-hover hover:text-ink">
+                <a href="#/new" className="flex h-7 items-center gap-2.5 rounded-ctl px-2 font-medium text-ink-2 no-underline hover:bg-hover hover:text-ink">
                   <Icon name="plus" className="size-4 text-ink-3" />
                   Add a connection
                 </a>
@@ -287,13 +298,13 @@ export function App() {
               {viewer.isAdmin ? (
                 <a
                   href="#/settings"
-                  aria-current={account ? 'page' : undefined}
+                  aria-current={settings ? 'page' : undefined}
                   className={cx(
                     'flex h-7 items-center gap-2.5 rounded-ctl px-2 font-medium no-underline',
-                    account ? 'bg-hover text-ink hover:text-ink' : 'text-ink-2 hover:bg-hover hover:text-ink',
+                    settings ? 'bg-hover text-ink hover:text-ink' : 'text-ink-2 hover:bg-hover hover:text-ink',
                   )}
                 >
-                  <Icon name="settings" className={cx('size-4', account ? 'text-accent' : 'text-ink-3')} />
+                  <Icon name="settings" className={cx('size-4', settings ? 'text-accent' : 'text-ink-3')} />
                   Settings
                 </a>
               ) : null}
@@ -311,7 +322,7 @@ export function App() {
       </div>
       <main id="main" tabIndex={-1} className={cx('min-w-0 px-4 py-3 outline-none md:px-6 md:py-4', event && !account && 'xl:mr-panel')}>
         <div key={account ? 'account' : tenant?.id} className="mx-auto max-w-[90rem]">
-          {account ? <Integrations /> : view(base, event, viewer)}
+          {newFlow ? <NewFlow path={path} viewer={viewer} /> : settings ? <Integrations /> : view(base, event, viewer)}
         </div>
       </main>
       {event && tenant && !account ? <EventPanel key={tenant.id} id={event} onClose={closePanel} /> : null}
