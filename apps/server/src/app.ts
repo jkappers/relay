@@ -5,6 +5,7 @@ import {
   createActionExecutor,
   createProviderAppStore,
   deriveReplyTokenKey,
+  discordBotTokenReader,
   PROMETHEUS_CONTENT_TYPE,
   providerAppEnv,
   type Cipher,
@@ -14,7 +15,7 @@ import {
   type Queue,
 } from '@relay/core'
 import { createDiscordRuntime } from '@relay/provider-discord'
-import { createSlackAdapter, createSlackRuntime } from '@relay/provider-slack'
+import { createSlackRuntime } from '@relay/provider-slack'
 import { createSmsAdapter, createSmsRuntime } from '@relay/provider-sms'
 import { createWebhookAdapter, createWebhookRuntime } from '@relay/provider-webhook'
 import { actionsRoutes } from './actions'
@@ -25,7 +26,8 @@ import { consoleHeaders, consoleStatic } from './console/static'
 import type { ServerConfig } from './config'
 import { ingressHandler } from './ingress'
 import type { ServerMetrics } from './metrics'
-import { discordOAuthProvider, oauthRoutes, slackOAuthProvider } from './oauth'
+import { createLiveApps } from './live-apps'
+import { oauthRoutes } from './oauth'
 import { deriveStateKey } from './oauth-state'
 
 export interface AppDeps {
@@ -59,28 +61,9 @@ export interface AppDeps {
 
 export function createApp(deps: AppDeps) {
   const clock = deps.nowSeconds ? { nowSeconds: deps.nowSeconds } : {}
-  const { SLACK_SIGNING_SECRET, SLACK_CLIENT_ID, SLACK_CLIENT_SECRET } = deps.config
-  const slackApp = SLACK_SIGNING_SECRET && SLACK_CLIENT_ID && SLACK_CLIENT_SECRET ? { signingSecret: SLACK_SIGNING_SECRET, clientId: SLACK_CLIENT_ID, clientSecret: SLACK_CLIENT_SECRET } : null
-  const { DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET } = deps.config
-  const discordApp = DISCORD_CLIENT_ID && DISCORD_CLIENT_SECRET ? { clientId: DISCORD_CLIENT_ID, clientSecret: DISCORD_CLIENT_SECRET } : null
   const webhook = createWebhookAdapter({ connections: deps.connections, ...clock })
   const sms = createSmsAdapter({ connections: deps.connections, publicUrl: deps.config.PUBLIC_URL })
-  const runtimes = {
-    slack: createSlackRuntime({ db: deps.db, ...(deps.config.SLACK_API_BASE_URL ? { apiBase: deps.config.SLACK_API_BASE_URL } : {}) }),
-    webhook: createWebhookRuntime(),
-    sms: createSmsRuntime({ db: deps.db, ...(deps.config.SMS_API_BASE_URL ? { apiBase: deps.config.SMS_API_BASE_URL } : {}) }),
-    discord: createDiscordRuntime({ db: deps.db, botToken: deps.config.DISCORD_BOT_TOKEN, apiBase: deps.config.DISCORD_API_BASE_URL }),
-  }
-  const execute = createActionExecutor({
-    db: deps.db,
-    connections: deps.connections,
-    runtimes,
-    counters: deps.metrics,
-  })
-  const ingressDeps = { db: deps.db, queue: deps.queue, metrics: deps.metrics }
-
   const nowSeconds = deps.nowSeconds ?? (() => Math.floor(Date.now() / 1000))
-  const sessions = createSessionStore(deps.db, nowSeconds)
   const appEnv = providerAppEnv(deps.config)
   const providerApps =
     deps.providerApps ??
@@ -91,6 +74,31 @@ export function createApp(deps: AppDeps) {
       ttlMs: 5000,
       counters: { configErrors: deps.metrics.providerAppConfigErrors },
     })
+  const runtimes = {
+    slack: createSlackRuntime({ db: deps.db, ...(deps.config.SLACK_API_BASE_URL ? { apiBase: deps.config.SLACK_API_BASE_URL } : {}) }),
+    webhook: createWebhookRuntime(),
+    sms: createSmsRuntime({ db: deps.db, ...(deps.config.SMS_API_BASE_URL ? { apiBase: deps.config.SMS_API_BASE_URL } : {}) }),
+    discord: createDiscordRuntime({ db: deps.db, botToken: discordBotTokenReader(providerApps), apiBase: deps.config.DISCORD_API_BASE_URL }),
+  }
+  const execute = createActionExecutor({
+    db: deps.db,
+    connections: deps.connections,
+    runtimes,
+    counters: deps.metrics,
+  })
+  const ingressDeps = { db: deps.db, queue: deps.queue, metrics: deps.metrics }
+
+  const sessions = createSessionStore(deps.db, nowSeconds)
+  const live = createLiveApps({
+    db: deps.db,
+    store: providerApps,
+    connections: deps.connections,
+    metrics: deps.metrics,
+    ingress: ingressDeps,
+    nowSeconds,
+    discordApiBase: deps.config.DISCORD_API_BASE_URL,
+    fetch: deps.fetch,
+  })
   const distDir = deps.consoleDistDir ?? fileURLToPath(new URL('../../console/dist', import.meta.url))
 
   const app = new Hono()
@@ -130,7 +138,7 @@ export function createApp(deps: AppDeps) {
         hasher: deps.hasher ?? scryptHasher,
         signupMode: deps.config.SIGNUP_MODE,
         publicUrl: deps.config.PUBLIC_URL,
-        providers: { slack: slackApp !== null, discord: discordApp !== null },
+        providers: live.enabled,
         nowSeconds,
         admin: {
           providerApps,
@@ -149,23 +157,11 @@ export function createApp(deps: AppDeps) {
     sessionUser: sessionUser(sessions),
     ...clock,
   }
-  const fetchOpt = deps.fetch ? { fetch: deps.fetch } : {}
 
-  if (slackApp) {
-    const slack = createSlackAdapter({ signingSecret: slackApp.signingSecret, connections: deps.connections, ...clock })
-    const provider = slackOAuthProvider({ ...slackApp, allowedUserIds: deps.config.SLACK_ALLOWED_USER_IDS, connections: deps.connections, ...fetchOpt })
-    app.post('/hooks/slack', ingressHandler(slack, ingressDeps)).route('/oauth/slack', oauthRoutes(provider, oauthDeps))
-  }
-  if (discordApp) {
-    const provider = discordOAuthProvider({
-      ...discordApp,
-      allowedUserIds: deps.config.DISCORD_ALLOWED_USER_IDS ?? [],
-      connections: deps.connections,
-      ...(deps.config.DISCORD_API_BASE_URL ? { apiBase: deps.config.DISCORD_API_BASE_URL } : {}),
-      ...fetchOpt,
-    })
-    app.route('/oauth/discord', oauthRoutes(provider, oauthDeps))
-  }
+  app
+    .post('/hooks/slack', live.slackIngress)
+    .route('/oauth/slack', oauthRoutes('slack', live.slackOAuth, oauthDeps))
+    .route('/oauth/discord', oauthRoutes('discord', live.discordOAuth, oauthDeps))
 
   return app.route('/', consoleStatic(distDir))
 }

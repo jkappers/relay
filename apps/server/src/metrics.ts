@@ -74,6 +74,10 @@ export function createServerMetrics(registry = new MetricsRegistry()) {
       'Provider app settings that could not be used, by reason.',
       ['provider', 'reason'] as const,
     ),
+    slackSignaturePrevious: registry.counter(
+      'relay_slack_signature_previous_total',
+      'Slack requests accepted with the previous signing secret during its 24-hour overlap.',
+    ),
     oauthCallbacks: registry.counter(
       'relay_oauth_callbacks_total',
       'OAuth callback results.',

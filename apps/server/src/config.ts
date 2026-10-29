@@ -21,12 +21,12 @@ export const serverEnvSchema = coreEnvSchema
     SLACK_API_BASE_URL: z.url().default('https://slack.com/api'),
     SMS_API_BASE_URL: z.url().default('https://api.twilio.com'),
     SIGNUP_MODE: z.enum(['closed', 'open']).default('closed'),
-    // Slack is enabled only when all three are set.
+    // Env fallback for the Slack app when none is saved in Relay. Used only when all three are set.
     SLACK_SIGNING_SECRET: optional,
     SLACK_CLIENT_ID: optional,
     SLACK_CLIENT_SECRET: optional,
     SLACK_ALLOWED_USER_IDS: idList,
-    // Discord install (OAuth) is enabled only when both are set. The bot token is for actions (/actions).
+    // Env fallback for the Discord app when none is saved in Relay. Install (OAuth) needs both ids; the bot token is for actions.
     DISCORD_CLIENT_ID: optional,
     DISCORD_CLIENT_SECRET: optional,
     DISCORD_BOT_TOKEN: optional,

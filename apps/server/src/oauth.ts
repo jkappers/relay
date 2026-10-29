@@ -50,16 +50,27 @@ export interface OAuthDeps {
   nowSeconds?: () => number
 }
 
-export function oauthRoutes(provider: OAuthProvider, deps: OAuthDeps) {
-  const nowSeconds = deps.nowSeconds ?? (() => Math.floor(Date.now() / 1000))
-  const cookieName = `relay_${provider.id}_oauth`
-  const cookiePath = `/oauth/${provider.id}`
-  const redirectUri = `${deps.publicUrl}/oauth/${provider.id}/callback`
-  const secure = deps.publicUrl.startsWith('https://')
-  const outcome = (o: string) => deps.metrics.oauthCallbacks.inc({ provider: provider.id, outcome: o })
+/** The OAuth provider for this request: built from the app settings in force now, or why there is none. */
+export type OAuthResolution = { kind: 'ready'; provider: OAuthProvider } | { kind: 'missing' } | { kind: 'invalid' }
 
-  return new Hono()
+export function oauthRoutes(id: 'slack' | 'discord', resolve: () => Promise<OAuthResolution>, deps: OAuthDeps) {
+  const nowSeconds = deps.nowSeconds ?? (() => Math.floor(Date.now() / 1000))
+  const cookieName = `relay_${id}_oauth`
+  const cookiePath = `/oauth/${id}`
+  const secure = deps.publicUrl.startsWith('https://')
+  const outcome = (o: string) => deps.metrics.oauthCallbacks.inc({ provider: id, outcome: o })
+
+  return new Hono<{ Variables: { provider: OAuthProvider } }>()
+    .use('*', async (c, next) => {
+      const resolved = await resolve()
+      if (resolved.kind === 'missing') return c.notFound()
+      if (resolved.kind === 'invalid') return c.text('this integration is not available: its app settings need attention', 503)
+      c.set('provider', resolved.provider)
+      await next()
+    })
     .get('/start', async (c) => {
+      const provider = c.var.provider
+      const redirectUri = `${deps.publicUrl}/oauth/${id}/callback`
       const userId = await deps.sessionUser(c)
       if (!userId) return c.redirect('/#/login', 302)
       const { state, nonce } = createState(deps.stateKey, userId, nowSeconds())
@@ -75,6 +86,8 @@ export function oauthRoutes(provider: OAuthProvider, deps: OAuthDeps) {
     // The console session cookie is SameSite=Strict, so the browser drops it on the provider's cross-site redirect.
     // The signed state names the Relay user, and the Lax nonce cookie ties it to the browser that started.
     .get('/callback', zValidator('query', callbackQuery), async (c) => {
+      const provider = c.var.provider
+      const redirectUri = `${deps.publicUrl}/oauth/${id}/callback`
       const query = c.req.valid('query')
       const { code, state, error } = query
       const cookieNonce = getCookie(c, cookieName)

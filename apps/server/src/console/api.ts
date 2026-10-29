@@ -65,8 +65,8 @@ export interface ConsoleApiDeps {
   hasher: PasswordHasher
   signupMode: 'open' | 'closed'
   publicUrl: string
-  /** Which OAuth installs the server has app settings for. */
-  providers?: { slack: boolean; discord: boolean }
+  /** Which OAuth installs have usable app settings right now. */
+  providers: () => Promise<{ slack: boolean; discord: boolean }>
   nowSeconds: () => number
   admin: Pick<AdminApiDeps, 'providerApps' | 'providerAppEnv' | 'slackApiBase' | 'discordApiBase' | 'fetch'>
 }
@@ -351,8 +351,8 @@ export function consoleApi(deps: ConsoleApiDeps) {
 
   api.get('/connections/slack-url', (c) => c.json({ url: `${deps.publicUrl}/oauth/slack/start` }))
 
-  api.get('/connections/providers', (c) => {
-    const enabled = deps.providers ?? { slack: true, discord: false }
+  api.get('/connections/providers', async (c) => {
+    const enabled = await deps.providers()
     const start = (id: string, on: boolean) => (on ? `${deps.publicUrl}/oauth/${id}/start` : null)
     return c.json({ slack: start('slack', enabled.slack), discord: start('discord', enabled.discord) })
   })
