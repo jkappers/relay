@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { eq, sql } from 'drizzle-orm'
 import { QUEUES, schema, type Envelope } from '@relay/core'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { apiAs, login, useHarness, type Api } from './harness'
 
 const h = useHarness()
@@ -328,6 +328,92 @@ describe('events', () => {
 
     await h.connections.revokeSlack('T1', ['U1'])
     expect((await json(api('GET', `/api/events/${echo}`))).state).toBe('skipped_inactive')
+  })
+
+  it('summarizes each event trace in the list', async () => {
+    const conn = await seedConnection()
+    const dest = await seedDestination()
+    const dest2 = await seedDestination()
+    const route = await json(api('POST', '/api/routes', { name: 'r', eventType: '*', destinationIds: [dest, dest2] }))
+    const deliver = async (eventId: string, status: 'pending' | 'succeeded' | 'failed', destinationId = dest, lastError: string | null = null) => {
+      const [d] = await h.db.insert(schema.deliveries).values({ eventId, routeId: route.id, destinationId, status, lastError }).returning()
+      return d!
+    }
+
+    const pending = await seedEvent(conn)
+    const unmatched = await seedEvent(conn, { routed: true })
+    const succeeded = await seedEvent(conn, { routed: true })
+    const ok = await deliver(succeeded, 'succeeded')
+    await h.db.insert(schema.actionsLog).values([
+      { deliveryId: ok.id, idempotencyKey: 'a', type: 'reply', params: {}, status: 'succeeded' },
+      { deliveryId: ok.id, idempotencyKey: 'b', type: 'react', params: {}, status: 'pending' },
+    ])
+    const failed = await seedEvent(conn, { routed: true })
+    await deliver(failed, 'pending')
+    const bad = await deliver(failed, 'failed', dest2, 'HTTP 500')
+
+    const slackConn = await h.connections.upsertSlack({ teamId: 'T1', userId: 'U1', accessToken: 'xoxp' })
+    const echo = await seedEvent(slackConn.id, {
+      provider: 'slack',
+      type: 'slack.message.im',
+      context: { channelId: 'D1', threadId: null, messageId: '1.2' },
+      routed: true,
+    })
+    await h.db.insert(schema.sentMessages).values({ connectionId: slackConn.id, channel: 'D1', ts: '1.2' })
+    const revokedConn = await seedConnection()
+    const inactive = await seedEvent(revokedConn, { routed: true })
+    await api('POST', `/api/connections/${revokedConn}/revoke`)
+
+    const items = (await json(api('GET', '/api/events'))).items as any[]
+    const trace = (id: string) => items.find((e) => e.id === id).trace
+    const none = { pending: 0, succeeded: 0, failed: 0 }
+
+    expect(trace(pending)).toEqual({ routed: 'pending', deliveries: none, actions: none, failedDelivery: null })
+    expect(trace(unmatched)).toEqual({ routed: 'unmatched', deliveries: none, actions: none, failedDelivery: null })
+    expect(trace(succeeded)).toEqual({
+      routed: 'routed',
+      deliveries: { ...none, succeeded: 1 },
+      actions: { ...none, succeeded: 1, pending: 1 },
+      failedDelivery: null,
+    })
+    expect(trace(failed)).toEqual({
+      routed: 'routed',
+      deliveries: { ...none, pending: 1, failed: 1 },
+      actions: none,
+      failedDelivery: { id: bad.id, lastError: 'HTTP 500' },
+    })
+    expect(trace(echo).routed).toBe('echo')
+    expect(trace(inactive).routed).toBe('inactive')
+  })
+
+  it('builds the event list page in one query', async () => {
+    const conn = await seedConnection()
+    const dest = await seedDestination()
+    const route = await json(api('POST', '/api/routes', { name: 'r', eventType: '*', destinationIds: [dest] }))
+    const countFor = async (n: number) => {
+      await resetEvents()
+      for (let i = 0; i < n; i++) {
+        const e = await seedEvent(conn, { routed: true })
+        await h.db.insert(schema.deliveries).values({ eventId: e, routeId: route.id, destinationId: dest, status: 'failed' })
+      }
+      const client = (h.db as unknown as { $client: { unsafe: (...args: unknown[]) => unknown } }).$client
+      const spy = vi.spyOn(client, 'unsafe')
+      try {
+        const res = await api('GET', '/api/events')
+        expect((await json(res)).items).toHaveLength(n)
+        return spy.mock.calls.length
+      } finally {
+        spy.mockRestore()
+      }
+    }
+    const resetEvents = async () => {
+      await h.db.delete(schema.deliveries)
+      await h.db.delete(schema.events)
+    }
+    const one = await countFor(1)
+    const many = await countFor(12)
+    expect(one).toBe(1)
+    expect(many).toBe(1)
   })
 
   it('replays an event with a singleton key', async () => {
