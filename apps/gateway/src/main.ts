@@ -1,12 +1,26 @@
 import { createServer, type Server } from 'node:http'
-import { REST } from '@discordjs/rest'
-import { WebSocketManager, WebSocketShardEvents } from '@discordjs/ws'
-import { ConfigError, createCipher, createConnectionStore, createDb, loadConfig, log, PgBossQueue, PROMETHEUS_CONTENT_TYPE, QUEUES, type MetricsRegistry } from '@relay/core'
+import {
+  ConfigError,
+  createCipher,
+  createConnectionStore,
+  createDb,
+  createProviderAppStore,
+  loadConfig,
+  log,
+  PgBossQueue,
+  PROMETHEUS_CONTENT_TYPE,
+  providerAppEnv,
+  QUEUES,
+  type MetricsRegistry,
+} from '@relay/core'
 import { createDiscordAdapter } from '@relay/provider-discord'
 import { GATEWAY_INTENTS, gatewayEnvSchema } from './config'
+import { createGatewayController, type TokenRead } from './controller'
 import { createDispatchHandler } from './handler'
 import { acquireLeaderLock } from './lock'
 import { createGatewayMetrics } from './metrics'
+import { discordSessionFactory } from './session'
+import { createStatusWriter } from './status'
 
 function startMetricsServer(registry: MetricsRegistry, port: number): Promise<Server> {
   const server = createServer((req, res) => {
@@ -30,7 +44,8 @@ async function main() {
     pollMs: config.GATEWAY_LOCK_POLL_SECONDS * 1000,
     onWaiting: () => log.info('gateway: another copy holds the leader lock, waiting'),
   })
-  let manager: WebSocketManager | null = null
+  let controller: ReturnType<typeof createGatewayController> | null = null
+  let pollTimer: NodeJS.Timeout | undefined
   let shuttingDown = false
   const cleanup: (() => Promise<void>)[] = []
 
@@ -38,10 +53,11 @@ async function main() {
     if (shuttingDown) return
     shuttingDown = true
     log.info('gateway shutting down', { reason })
+    if (pollTimer) clearInterval(pollTimer)
     try {
-      await manager?.destroy({ reason })
+      await controller?.stop(reason)
     } catch (err) {
-      log.warn('gateway: destroy failed', { err: String(err) })
+      log.warn('gateway: stop failed', { err: String(err) })
     }
     metrics.connected.set(0)
     for (const fn of cleanup.reverse()) await fn().catch((err) => log.warn('gateway: cleanup failed', { err: String(err) }))
@@ -71,6 +87,20 @@ async function main() {
   cleanup.push(() => queue.stop())
   await queue.ensureQueue(QUEUES.route)
 
+  const providerApps = createProviderAppStore({
+    db,
+    masterKey: config.RELAY_MASTER_KEY,
+    env: providerAppEnv({ DISCORD_BOT_TOKEN: config.DISCORD_BOT_TOKEN }),
+    ttlMs: config.GATEWAY_TOKEN_POLL_SECONDS * 1000,
+    counters: { configErrors: metrics.providerAppConfigErrors },
+  })
+  const readToken = async (): Promise<TokenRead> => {
+    const current = await providerApps.get('discord', { fresh: true })
+    if (current.state === 'invalid') return { kind: 'unknown' }
+    if (current.state === 'missing' || !current.config.botToken) return { kind: 'none' }
+    return { kind: 'token', token: current.config.botToken }
+  }
+
   let botUserId: string | null = null
   const adapter = createDiscordAdapter({ connections: createConnectionStore(db, cipher), botUserId: () => botUserId })
   const handle = createDispatchHandler({
@@ -84,22 +114,20 @@ async function main() {
     },
   })
 
-  const rest = new REST({ version: '10' }).setToken(config.DISCORD_BOT_TOKEN)
-  manager = new WebSocketManager({ token: config.DISCORD_BOT_TOKEN, intents: GATEWAY_INTENTS, rest })
-  // Resume, heartbeats, and reconnects are the library's job. Relay never re-identifies on its own: the IDENTIFY budget is 1000 a day.
-  manager.on(WebSocketShardEvents.Dispatch, (payload) => {
-    void handle({ t: payload.t, d: payload.d })
+  controller = createGatewayController({
+    readToken,
+    factory: discordSessionFactory({ intents: GATEWAY_INTENTS }),
+    metrics,
+    status: createStatusWriter(db),
+    onDispatch: (payload) => void handle(payload),
+    onNewSession: () => {
+      botUserId = null
+    },
+    minSwapMs: config.GATEWAY_MIN_SWAP_SECONDS * 1000,
   })
-  manager.on(WebSocketShardEvents.Ready, () => metrics.connected.set(1))
-  manager.on(WebSocketShardEvents.Resumed, () => metrics.connected.set(1))
-  manager.on(WebSocketShardEvents.Closed, (code) => {
-    metrics.connected.set(0)
-    metrics.closes.inc({ code: String(code) })
-    log.warn('gateway: socket closed', { code })
-  })
-  manager.on(WebSocketShardEvents.Error, (err) => log.error('gateway: shard error', { err: err.message }))
-  await manager.connect()
-  log.info('gateway started', { intents: GATEWAY_INTENTS, metricsPort: config.GATEWAY_METRICS_PORT })
+  await controller.tick()
+  pollTimer = setInterval(() => void controller?.tick(), config.GATEWAY_TOKEN_POLL_SECONDS * 1000)
+  log.info('gateway started', { intents: GATEWAY_INTENTS, metricsPort: config.GATEWAY_METRICS_PORT, tokenPollSeconds: config.GATEWAY_TOKEN_POLL_SECONDS })
 }
 
 main().catch((err) => {

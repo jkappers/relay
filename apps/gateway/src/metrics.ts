@@ -20,6 +20,13 @@ export function createGatewayMetrics(registry = new MetricsRegistry()) {
     registry,
     connected: registry.gauge('relay_discord_gateway_connected', '1 while the Discord Gateway session is ready, else 0.'),
     leader: registry.gauge('relay_discord_gateway_leader', '1 while this process holds the gateway leader lock, else 0.'),
+    configured: registry.gauge('relay_gateway_configured', '1 while the leader has a Discord bot token to connect with, else 0.'),
+    tokenSwaps: registry.counter('relay_gateway_token_swaps_total', 'Gateway sessions replaced because the bot token changed.'),
+    providerAppConfigErrors: registry.counter(
+      'relay_provider_app_config_errors_total',
+      'Provider app settings that could not be used, by reason.',
+      ['provider', 'reason'] as const,
+    ),
     closes: registry.counter('relay_discord_gateway_closes_total', 'Gateway socket closes by close code.', ['code'] as const),
     dispatches: registry.counter('relay_discord_dispatch_total', 'Gateway dispatches received, by event name.', ['type'] as const),
     messages: registry.counter('relay_discord_messages_total', 'MESSAGE_CREATE handling by outcome. accepted and duplicate count once per connection.', ['outcome'] as const),
