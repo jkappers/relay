@@ -1,0 +1,11 @@
+{
+  "name": "@relay/provider-webhook",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@relay/core": "workspace:*"
+  }
+}
