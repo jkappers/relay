@@ -2,7 +2,7 @@
 
 Relay is a personal event-ingest service. Providers like Slack send it events. Relay checks each event's signature, saves it, and puts it on a queue. A worker picks it up from there.
 
-Milestones 1 and 2 are done: ingest, routing, and signed HTTP delivery with retries. Actions and agents come later.
+Milestones 1 to 3 are done: ingest, routing, signed HTTP delivery with retries, and actions (reply, react, and more) with a loop guard. Agents come later.
 
 ## How an event flows
 
@@ -13,6 +13,8 @@ Milestones 1 and 2 are done: ingest, routing, and signed HTTP delivery with retr
 5. 2xx means `succeeded`. Network errors, timeouts, 408, 429, and 5xx retry with exponential backoff and full jitter (5s base, 15 min cap, up to the destination's `max_attempts`). A numeric `Retry-After` on a 429 is honored, up to the cap. Other responses (other 4xx, 3xx) fail at once. Redirects are not followed.
 6. A sweeper in the worker runs at startup and every minute. It requeues `route` jobs for events that were enqueued but never routed (`routed_at` is null) and `dispatch` jobs for deliveries stuck `pending`, if they are older than the grace period. Queued jobs are keyed by event or delivery id (queue policy `short`), so a sweep never adds a second waiting job. Max 100 rows per kind per sweep.
 7. A delivery that runs out of attempts, or fails at once, is `failed`. Replay it with the CLI.
+8. If a succeeded delivery returned `{actions: [...]}`, an `actions` job runs them (see Actions below).
+9. Before routing, the router drops events that relay itself posted (see Loop guard below).
 
 A route matches when it is enabled, the connection filter fits (empty means any), and:
 
@@ -27,8 +29,8 @@ Events with no text never match a text filter.
 
 | Path | What it is |
 |---|---|
-| `apps/server` | Hono HTTP server: ingress, Slack OAuth, `/metrics`, `/healthz` |
-| `apps/worker` | pg-boss consumers: router and dispatcher, plus `/metrics` and `/healthz` |
+| `apps/server` | Hono HTTP server: ingress, Slack OAuth, `POST /actions`, `/metrics`, `/healthz` |
+| `apps/worker` | pg-boss consumers: router, dispatcher, and actions, plus `/metrics` and `/healthz` |
 | `packages/core` | Config, crypto, DB schema and migrations, queue, envelope, provider interface, metrics |
 | `packages/providers/slack` | Slack adapter: signature check, normalize, OAuth |
 | `packages/providers/webhook` | Generic signed-webhook adapter |
@@ -61,7 +63,9 @@ Tests use the `relay_test` database. Compose creates it on first start, so tests
 | `DATABASE_URL` | server, worker, CLI | Postgres URL |
 | `RELAY_MASTER_KEY` | server, worker, CLI | 32 random bytes, base64. Encrypts stored tokens and secrets. Startup fails if it's missing or the wrong size. |
 | `PORT` | server | Default 3000 |
-| `PUBLIC_URL` | server | Public HTTPS base URL. The OAuth `redirect_uri` is `$PUBLIC_URL/oauth/slack/callback`. |
+| `PUBLIC_URL` | server, worker | Public HTTPS base URL. The OAuth `redirect_uri` is `$PUBLIC_URL/oauth/slack/callback`. The worker sends `$PUBLIC_URL/actions` to destinations. |
+| `SLACK_API_BASE_URL` | server, worker | Slack Web API base. Default `https://slack.com/api`. Change only to stub Slack in tests. |
+| `REPLY_TOKEN_TTL_SECONDS` | worker | How long a reply token lives. Default 3600. |
 | `SLACK_SIGNING_SECRET` | server | From the Slack app's Basic Information page |
 | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | server | Same page |
 | `SLACK_ALLOWED_USER_IDS` | server | Required. Comma-separated Slack user IDs that may connect. Others get a 403 and nothing is stored. |
@@ -83,6 +87,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 |---|---|
 | `POST /hooks/slack` | Slack Events API Request URL |
 | `POST /hooks/webhook/:connectionId` | Generic webhook |
+| `POST /actions` | Async actions, with a reply token. See Actions. |
 | `GET /oauth/slack/start` | Starts Slack OAuth (user scopes only) |
 | `GET /oauth/slack/callback` | Slack OAuth redirect target |
 | `GET /metrics` | Prometheus text. See `docs/metrics.md`. |
@@ -95,9 +100,10 @@ The worker serves `GET /metrics` and `GET /healthz` on `WORKER_METRICS_PORT`.
 Temporary until the console. Run from the repo root with `pnpm --filter @relay/server <script>`. 
 | Script | Does |
 |---|---|
-| `destinations:create --name N --url U [--max-attempts 8] [--timeout-ms 10000]` | Creates an HTTP destination. Prints its id and signing secret once. |
+| `destinations:create --name N --url U [--max-attempts 8] [--timeout-ms 10000] [--allowed-actions reply,react]` | Creates an HTTP destination. Prints its id and signing secret once. |
 | `routes:create --name N --event-type T --destination ID [--destination ID...] [--connection ID] [--contains S] [--regex R] [--include-subtypes]` | Creates a route. |
 | `routes:list` | Lists routes. |
+| `tokens:revoke <jti>` | Revokes a reply token. Find the jti in `deliveries.last_reply_jti`. |
 | `deliveries:list [--status failed]` | Lists the 100 newest deliveries. |
 | `deliveries:replay <deliveryId>` | Resets a `failed` delivery to `pending` with 0 attempts and queues it. |
 | `events:replay <eventId>` | Queues the event for routing again. Existing deliveries are kept. Only new matches (a new route, a new destination) create deliveries. |
@@ -128,7 +134,66 @@ function verify(secret, headers, rawBody) {
 }
 ```
 
-Reply with any 2xx. If the reply is JSON up to 64 KB, relay stores it on the delivery. Nothing acts on it yet.
+Reply with any 2xx. If the reply is JSON up to 64 KB, relay stores it on the delivery. If it holds `{"actions": [...]}`, relay runs them.
+
+## Actions
+
+A destination can act back on the Slack event it got: reply in the thread, react, update a message relay sent, or read the thread.
+
+**Safety rule:** every action targets only the source event's context (its channel, thread, and message). A destination can never pick another channel, thread, or message. Extra params like `channel` are ignored.
+
+| Action | Params | Does | Changes Slack |
+|---|---|---|---|
+| `reply` | `text` | Posts in the event's thread (`thread_ts` is the thread's parent, or the message itself if it isn't in a thread) | yes |
+| `post` | `text` | Posts in the same channel, not in a thread | yes |
+| `react` | `name` | Adds an emoji reaction to the event's message. `already_reacted` counts as success. | yes |
+| `update` | `messageId`, `text` | Edits a message. Only allowed if relay sent it (it must be in `sent_messages` for this connection and channel). | yes |
+| `thread.history` | `limit` (1 to 100, default 50) | Returns `{messages: [{ts, user, text, thread_ts}], hasMore}` | no |
+
+Limit what a destination may do with `--allowed-actions` when you create it. Unset means all actions. If none remain, the envelope has no `reply` block.
+
+### Sync: return actions in the response
+
+```json
+{ "actions": [{ "type": "reply", "text": "got it" }, { "type": "react", "name": "eyes" }] }
+```
+
+Max 20 actions. Relay runs them after it marks the delivery `succeeded`. The array index is the idempotency key. Read-only results (`thread.history`) are not returned on this path, so use the async API to read.
+
+### Async: call `/actions`
+
+Each delivery envelope has `reply: { actionsUrl, token, allowed }`. The token works for about an hour (`REPLY_TOKEN_TTL_SECONDS`) and only for that delivery. A retried delivery gets a new token.
+
+```sh
+curl -X POST "$ACTIONS_URL" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"actions":[{"type":"react","name":"eyes","idempotencyKey":"react-1"},{"type":"thread.history","limit":10}]}'
+```
+
+Response `200`: `{"results":[{"type":"react","status":"succeeded","result":{}}, ...]}`. Per action, `status` is `succeeded`, `failed` (with `error`), `in_progress`, or `retry`. On `retry`, send it again with the same key (`retryAfterSeconds` and a `Retry-After` header show when, if Slack said so).
+
+| Status | Meaning |
+|---|---|
+| 401 | Bad, expired, or revoked token, unknown delivery, or revoked connection. No detail. |
+| 403 | An action type isn't in the token's `allowed` list. Nothing ran. |
+| 400 | Bad body or params, more than 20 actions, or a mutating action with no `idempotencyKey`. Nothing ran. |
+| 413 | Body over 64 KB. |
+
+### Idempotency
+
+- Actions that change Slack are logged in `actions_log`, unique on `(delivery, idempotency key)`. Async callers must send `idempotencyKey` (1 to 200 chars) on each of them.
+- Sending the same key again returns the stored result and does not call Slack. The same key with different params is a `failed` result.
+- A `pending` row under 60 s old means another run is in flight (`in_progress`). Over 60 s, relay assumes a crash and runs it again.
+- **At least once, not exactly once.** If relay crashes after Slack accepts a post but before it saves the result, the re-run can post twice. The same goes for a network error where Slack did get the call.
+- Slack errors: 429 (honors `Retry-After`), `ratelimited`, 5xx, `internal_error`, `service_unavailable` and network errors are retried. Other errors (`channel_not_found`, `not_in_channel`, ...) fail at once. After 8 tries an action fails for good.
+- Sync actions that still need a retry are retried by the queue (5 retries with backoff). The sweeper also requeues succeeded deliveries whose actions never finished.
+
+## Loop guard
+
+Posts made with your user token look like your own messages. When an action posts, relay records the channel and ts in `sent_messages` in the same transaction that marks the action done. The router skips any event that matches (`skipped_echo`).
+
+The echo can arrive before that row is committed. So if the event's actor is the connection's own user and nothing matched, the router waits 5 s and checks once more (`echo_recheck`), only for events under 30 s old. A message you send yourself that relay did not post (like a DM to yourself) is still routed after the recheck.
 
 ## Point a Slack app at relay
 
