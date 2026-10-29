@@ -231,6 +231,10 @@ function useHarnessOnce(): Harness {
     metrics: h.metrics,
     backoffBaseMs: 5_000,
     backoffCapMs: 900_000,
+    runtimes: h.runtimes,
+    replyKey: h.replyKey,
+    publicUrl: 'http://relay.test',
+    replyTtlSeconds: 3600,
   })
   return { ...h, dispatcher }
 }

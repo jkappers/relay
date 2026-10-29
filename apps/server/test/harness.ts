@@ -9,7 +9,7 @@ import {
   type ConnectionStore,
   type Db,
 } from '@relay/core'
-import { resetDb, TEST_DATABASE_URL, TEST_MASTER_KEY } from '@relay/core/testing'
+import { resetDb, startSlackStub, TEST_DATABASE_URL, TEST_MASTER_KEY, type SlackStub } from '@relay/core/testing'
 import { computeSlackSignature } from '@relay/provider-slack'
 import { computeWebhookSignature } from '@relay/provider-webhook'
 import { afterAll, beforeAll, beforeEach, vi } from 'vitest'
@@ -26,6 +26,7 @@ export interface Harness {
   metrics: ServerMetrics
   fetch: ReturnType<typeof vi.fn<typeof fetch>>
   app: ReturnType<typeof createApp>
+  slack: SlackStub
 }
 
 export function useHarness(): Harness {
@@ -40,10 +41,12 @@ export function useHarness(): Harness {
     h.queue = new PgBossQueue(TEST_DATABASE_URL)
     await h.queue.start()
     await h.queue.ensureQueue(QUEUES.route)
+    h.slack = await startSlackStub()
   })
 
   beforeEach(async () => {
     await resetDb(h.db)
+    h.slack.reset()
     h.metrics = createServerMetrics()
     h.fetch = vi.fn<typeof fetch>()
     h.app = createApp({
@@ -54,6 +57,7 @@ export function useHarness(): Harness {
         SLACK_CLIENT_SECRET: 'client-secret',
         SLACK_ALLOWED_USER_IDS: ['U065VRX1T0'],
         RELAY_MASTER_KEY: TEST_MASTER_KEY,
+        SLACK_API_BASE_URL: h.slack.url,
       },
       db: h.db,
       queue: h.queue,
@@ -64,6 +68,7 @@ export function useHarness(): Harness {
   })
 
   afterAll(async () => {
+    await h.slack?.close()
     await h.queue?.stop()
     await close?.()
   })

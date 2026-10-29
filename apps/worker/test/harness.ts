@@ -3,11 +3,14 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net'
 import { sql } from 'drizzle-orm'
 import {
+  createActionExecutor,
   createCipher,
   createConnectionStore,
   createDb,
   createDestination,
   createRoute,
+  deriveReplyTokenKey,
+  type ProviderRuntime,
   PgBossQueue,
   QUEUES,
   schema,
@@ -18,8 +21,11 @@ import {
   type Db,
   type Envelope,
 } from '@relay/core'
-import { resetDb, TEST_DATABASE_URL, TEST_MASTER_KEY } from '@relay/core/testing'
+import { resetDb, startSlackStub, TEST_DATABASE_URL, TEST_MASTER_KEY, type SlackStub } from '@relay/core/testing'
+import { createSlackRuntime } from '@relay/provider-slack'
+import { createWebhookRuntime } from '@relay/provider-webhook'
 import { afterAll, beforeAll, beforeEach } from 'vitest'
+import { createActionsHandler } from '../src/actions'
 import { createDispatcher } from '../src/dispatcher'
 import { createWorkerMetrics, type WorkerMetrics } from '../src/metrics'
 import { createRouter } from '../src/router'
@@ -32,7 +38,14 @@ export interface Harness {
   metrics: WorkerMetrics
   router: ReturnType<typeof createRouter>
   dispatcher: ReturnType<typeof createDispatcher>
+  slack: SlackStub
+  runtimes: Record<string, ProviderRuntime>
+  replyKey: Buffer
+  execute: ReturnType<typeof createActionExecutor>
+  actions: ReturnType<typeof createActionsHandler>
 }
+
+export const PUBLIC_URL = 'http://relay.test'
 
 export function useHarness(opts: { backoffBaseMs?: number; backoffCapMs?: number } = {}): Harness {
   const h = {} as Harness
@@ -48,12 +61,19 @@ export function useHarness(opts: { backoffBaseMs?: number; backoffCapMs?: number
     await h.queue.start()
     await h.queue.ensureQueue(QUEUES.route)
     await h.queue.ensureQueue(QUEUES.dispatch)
+    await h.queue.ensureQueue(QUEUES.actions)
+    h.slack = await startSlackStub()
+    h.replyKey = deriveReplyTokenKey(TEST_MASTER_KEY)
   })
 
   beforeEach(async () => {
     await resetDb(h.db)
     h.metrics = createWorkerMetrics()
-    h.router = createRouter({ db: h.db, queue: h.queue, metrics: h.metrics })
+    h.slack.reset()
+    h.runtimes = { slack: createSlackRuntime({ db: h.db, apiBase: h.slack.url }), webhook: createWebhookRuntime() }
+    h.execute = createActionExecutor({ db: h.db, connections: h.connections, runtimes: h.runtimes, counters: h.metrics })
+    h.actions = createActionsHandler({ db: h.db, queue: h.queue, execute: h.execute })
+    h.router = createRouter({ db: h.db, queue: h.queue, metrics: h.metrics, runtimes: h.runtimes })
     h.dispatcher = createDispatcher({
       db: h.db,
       queue: h.queue,
@@ -61,10 +81,15 @@ export function useHarness(opts: { backoffBaseMs?: number; backoffCapMs?: number
       metrics: h.metrics,
       backoffBaseMs: opts.backoffBaseMs ?? 10,
       backoffCapMs: opts.backoffCapMs ?? 50,
+      runtimes: h.runtimes,
+      replyKey: h.replyKey,
+      publicUrl: PUBLIC_URL,
+      replyTtlSeconds: 3600,
     })
   })
 
   afterAll(async () => {
+    await h.slack?.close()
     await h.queue?.stop()
     await close?.()
   })
@@ -93,7 +118,7 @@ export async function insertEvent(
   }
   await h.db
     .insert(schema.events)
-    .values({ id, provider: 'webhook', connectionId, dedupKey: `${connectionId}:${id}`, raw: {}, envelope })
+    .values({ id, provider: envelope.provider, connectionId, dedupKey: `${connectionId}:${id}`, raw: {}, envelope })
   return { id, envelope }
 }
 
@@ -177,3 +202,28 @@ export const respond =
     res.writeHead(status, { ...(isJson ? { 'content-type': 'application/json' } : {}), ...headers })
     res.end(body === undefined ? '' : isJson ? JSON.stringify(body) : body)
   }
+
+export const SLACK_USER = 'U2147483697'
+
+export async function slackSetup(
+  h: Harness,
+  opts: { allowedActions?: string[] | null; envelope?: Partial<Envelope>; url?: string } = {},
+) {
+  const connection = await h.connections.upsertSlack({ teamId: 'T123ABC456', userId: SLACK_USER, accessToken: 'xoxp-test-token' })
+  const { destination, secret } = await createDestination(h.db, h.cipher, {
+    name: 'slack-dest',
+    url: opts.url ?? 'http://127.0.0.1:1/hook',
+    allowedActions: opts.allowedActions ?? null,
+  })
+  const route = await createRoute(h.db, { name: 'r', eventType: 'slack.*', destinationIds: [destination.id] })
+  const event = await insertEvent(h, connection.id, {
+    provider: 'slack',
+    type: 'slack.message.im',
+    actor: 'U0OTHER',
+    text: 'hi there',
+    context: { channelId: 'D024BE91L', threadId: '1355517523.000005', messageId: '1355517523.000005' },
+    ...opts.envelope,
+  })
+  const delivery = await makeDelivery(h, event.id, route.id, destination.id)
+  return { connection, destination, secret, route, event, delivery }
+}

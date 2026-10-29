@@ -21,7 +21,7 @@ describe('sweeper', () => {
     const delivery = await makeDelivery(h, event.id, route.id, s.destination.id)
     await h.db.update(schema.deliveries).set({ updatedAt: minutesAgo(10) }).where(eq(schema.deliveries.id, delivery.id))
 
-    expect(await sweeper()()).toEqual({ events: 0, deliveries: 1 })
+    expect(await sweeper()()).toEqual({ events: 0, deliveries: 1, actions: 0 })
     expect(await dispatchJobs(h)).toHaveLength(1)
     expect(h.metrics.sweeperRequeued.get({ kind: 'delivery' })).toBe(1)
 
@@ -36,7 +36,7 @@ describe('sweeper', () => {
     const event = await insertEvent(h, s.connection.id)
     await h.db.update(schema.events).set({ enqueuedAt: minutesAgo(10) }).where(eq(schema.events.id, event.id))
 
-    expect(await sweeper()()).toEqual({ events: 1, deliveries: 0 })
+    expect(await sweeper()()).toEqual({ events: 1, deliveries: 0, actions: 0 })
     const jobs = await h.db.execute<{ data: { eventId: string } }>(sql`select data from pgboss.job where name = 'route'`)
     expect(jobs.map((j) => j.data.eventId)).toEqual([event.id])
 
@@ -45,7 +45,7 @@ describe('sweeper', () => {
     expect(row!.routedAt).not.toBeNull()
     expect(await h.db.select().from(schema.deliveries)).toHaveLength(1)
     expect(h.metrics.sweeperRequeued.get({ kind: 'event' })).toBe(1)
-    expect(await sweeper()()).toEqual({ events: 0, deliveries: 0 })
+    expect(await sweeper()()).toEqual({ events: 0, deliveries: 0, actions: 0 })
   })
 
   it('leaves rows inside the grace period alone', async () => {
@@ -56,7 +56,7 @@ describe('sweeper', () => {
     await makeDelivery(h, event.id, route.id, s.destination.id)
     await h.db.update(schema.deliveries).set({ nextAttemptAt: new Date(Date.now() + 60_000) })
 
-    expect(await sweeper()()).toEqual({ events: 0, deliveries: 0 })
+    expect(await sweeper()()).toEqual({ events: 0, deliveries: 0, actions: 0 })
     expect(await dispatchJobs(h)).toHaveLength(0)
   })
 
@@ -67,7 +67,7 @@ describe('sweeper', () => {
     await h.db.update(schema.events).set({ enqueuedAt: minutesAgo(10), routedAt: minutesAgo(9) })
     const delivery = await makeDelivery(h, event.id, route.id, s.destination.id)
     await h.db.update(schema.deliveries).set({ status: 'failed', updatedAt: minutesAgo(10) }).where(eq(schema.deliveries.id, delivery.id))
-    expect(await sweeper()()).toEqual({ events: 0, deliveries: 0 })
+    expect(await sweeper()()).toEqual({ events: 0, deliveries: 0, actions: 0 })
   })
 
   it('does not create a second job while one is already queued', async () => {
@@ -80,7 +80,7 @@ describe('sweeper', () => {
     await clearJobs()
 
     await sweeper()()
-    expect(await sweeper()()).toEqual({ events: 0, deliveries: 0 })
+    expect(await sweeper()()).toEqual({ events: 0, deliveries: 0, actions: 0 })
     expect(await dispatchJobs(h)).toHaveLength(1)
     const rows = await h.db.execute<{ n: number }>(sql`select count(*)::int as n from pgboss.job where name = 'route'`)
     expect(rows[0]?.n).toBe(1)
