@@ -1,0 +1,12 @@
+{
+  "name": "@relay/provider-slack",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@relay/core": "workspace:*",
+    "zod": "4.6.7"
+  }
+}
