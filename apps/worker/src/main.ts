@@ -1,19 +1,69 @@
-import { ConfigError, coreEnvSchema, loadConfig, log, PgBossQueue, QUEUES, type RouteJob } from '@relay/core'
+import {
+  ConfigError,
+  createCipher,
+  createDb,
+  loadConfig,
+  log,
+  PgBossQueue,
+  QUEUES,
+  type DispatchJob,
+  type RouteJob,
+} from '@relay/core'
+import { workerEnvSchema } from './config'
+import { createDispatcher } from './dispatcher'
+import { startMetricsServer } from './http'
+import { createWorkerMetrics } from './metrics'
+import { createRouter } from './router'
+import { createSweeper } from './sweeper'
 
 async function main() {
-  const config = loadConfig(coreEnvSchema)
+  const config = loadConfig(workerEnvSchema)
+  const cipher = await createCipher(config.RELAY_MASTER_KEY)
+  const { db, close } = createDb(config.DATABASE_URL)
   const queue = new PgBossQueue(config.DATABASE_URL)
   await queue.start()
   await queue.ensureQueue(QUEUES.route)
+  await queue.ensureQueue(QUEUES.dispatch)
 
-  await queue.work<RouteJob>(QUEUES.route, async (jobs) => {
-    for (const job of jobs) log.info('route job received (stub)', { jobId: job.id, eventId: job.data.eventId })
+  const metrics = createWorkerMetrics()
+  const route = createRouter({ db, queue, metrics })
+  const dispatch = createDispatcher({
+    db,
+    queue,
+    cipher,
+    metrics,
+    backoffBaseMs: config.DISPATCH_BACKOFF_BASE_MS,
+    backoffCapMs: config.DISPATCH_BACKOFF_CAP_MS,
   })
-  log.info('worker started', { queues: [QUEUES.route] })
+  const poll = { pollingIntervalSeconds: config.WORKER_POLL_SECONDS }
+
+  await queue.work<RouteJob>(
+    QUEUES.route,
+    async (jobs) => {
+      for (const job of jobs) await route(job.data)
+    },
+    poll,
+  )
+  await queue.work<DispatchJob>(
+    QUEUES.dispatch,
+    async (jobs) => {
+      for (const job of jobs) await dispatch(job.data)
+    },
+    { ...poll, batchSize: 1, localConcurrency: 1 },
+  )
+  const sweep = createSweeper({ db, queue, metrics, graceMs: config.SWEEP_GRACE_SECONDS * 1000 })
+  const runSweep = () => sweep().catch((err) => log.error('sweeper failed', { err: String(err) }))
+  void runSweep()
+  const sweepTimer = setInterval(() => void runSweep(), config.SWEEP_INTERVAL_SECONDS * 1000)
+  const metricsServer = await startMetricsServer(metrics.registry, config.WORKER_METRICS_PORT)
+  log.info('worker started', { queues: [QUEUES.route, QUEUES.dispatch], metricsPort: config.WORKER_METRICS_PORT })
 
   const shutdown = async (signal: string) => {
     log.info('worker shutting down', { signal })
+    clearInterval(sweepTimer)
+    metricsServer.close()
     await queue.stop()
+    await close()
     process.exit(0)
   }
   process.once('SIGINT', () => void shutdown('SIGINT'))
