@@ -12,7 +12,7 @@ import {
   type ConnectionStore,
   type Db,
 } from '@relay/core'
-import { resetDb, startSlackStub, TEST_DATABASE_URL, TEST_MASTER_KEY, type SlackStub } from '@relay/core/testing'
+import { resetDb, startDiscordStub, startSlackStub, TEST_DATABASE_URL, TEST_MASTER_KEY, type DiscordStub, type SlackStub } from '@relay/core/testing'
 import { computeSlackSignature } from '@relay/provider-slack'
 import { computeTwilioSignature } from '@relay/provider-sms'
 import { computeWebhookSignature } from '@relay/provider-webhook'
@@ -37,6 +37,7 @@ export interface Harness {
   fetch: ReturnType<typeof vi.fn<typeof fetch>>
   app: ReturnType<typeof createApp>
   slack: SlackStub
+  discord: DiscordStub
   distDir: string
 }
 
@@ -59,11 +60,13 @@ export function useHarness(): Harness {
     writeFileSync(join(h.distDir, 'index.html'), INDEX_HTML)
     writeFileSync(join(h.distDir, 'assets', 'app.js'), 'console.log(1)')
     h.slack = await startSlackStub()
+    h.discord = await startDiscordStub()
   })
 
   beforeEach(async () => {
     await resetDb(h.db)
     h.slack.reset()
+    h.discord.reset()
     h.metrics = createServerMetrics()
     h.fetch = vi.fn<typeof fetch>()
     h.app = createApp({
@@ -76,6 +79,11 @@ export function useHarness(): Harness {
         RELAY_MASTER_KEY: TEST_MASTER_KEY,
         SIGNUP_MODE: 'closed',
         SLACK_API_BASE_URL: h.slack.url,
+        DISCORD_CLIENT_ID: 'discord-client-id',
+        DISCORD_CLIENT_SECRET: 'discord-client-secret',
+        DISCORD_BOT_TOKEN: 'discord-bot-token',
+        DISCORD_API_BASE_URL: h.discord.url,
+        DISCORD_ALLOWED_USER_IDS: [],
       },
       db: h.db,
       queue: h.queue,
@@ -90,6 +98,7 @@ export function useHarness(): Harness {
   afterAll(async () => {
     if (h.distDir) rmSync(h.distDir, { recursive: true, force: true })
     await h.slack?.close()
+    await h.discord?.close()
     await h.queue?.stop()
     await close?.()
   })

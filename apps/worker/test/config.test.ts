@@ -21,4 +21,11 @@ describe('worker config', () => {
     expect(workerEnvSchema.safeParse({ ...base, RELAY_AGENT_RUNNER: 'fake', NODE_ENV: 'production' }).success).toBe(false)
     expect(workerEnvSchema.safeParse({ ...base, NODE_ENV: 'production' }).success).toBe(true)
   })
+
+  it('makes the Discord bot token optional', () => {
+    const parsed = workerEnvSchema.parse(base)
+    expect(parsed.DISCORD_BOT_TOKEN).toBeUndefined()
+    expect(parsed.DISCORD_API_BASE_URL).toBe('https://discord.com/api/v10')
+    expect(workerEnvSchema.parse({ ...base, DISCORD_BOT_TOKEN: ' t ' }).DISCORD_BOT_TOKEN).toBe('t')
+  })
 })

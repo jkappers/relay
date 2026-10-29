@@ -24,7 +24,8 @@ import {
   type Envelope,
 } from '@relay/core'
 import type { AgentRunner } from '@relay/destination-agent'
-import { resetDb, startSlackStub, TEST_DATABASE_URL, TEST_MASTER_KEY, type SlackStub } from '@relay/core/testing'
+import { resetDb, startDiscordStub, startSlackStub, TEST_DATABASE_URL, TEST_MASTER_KEY, type DiscordStub, type SlackStub } from '@relay/core/testing'
+import { createDiscordRuntime } from '@relay/provider-discord'
 import { createSlackRuntime } from '@relay/provider-slack'
 import { createWebhookRuntime } from '@relay/provider-webhook'
 import { afterAll, beforeAll, beforeEach } from 'vitest'
@@ -43,6 +44,7 @@ export interface Harness {
   router: ReturnType<typeof createRouter>
   dispatcher: ReturnType<typeof createDispatcher>
   slack: SlackStub
+  discord: DiscordStub
   runtimes: Record<string, ProviderRuntime>
   replyKey: Buffer
   execute: ReturnType<typeof createActionExecutor>
@@ -69,6 +71,7 @@ export function useHarness(opts: { backoffBaseMs?: number; backoffCapMs?: number
     await h.queue.ensureQueue(QUEUES.actions)
     await h.queue.ensureQueue(QUEUES.agent)
     h.slack = await startSlackStub()
+    h.discord = await startDiscordStub()
     h.replyKey = deriveReplyTokenKey(TEST_MASTER_KEY)
   })
 
@@ -76,7 +79,12 @@ export function useHarness(opts: { backoffBaseMs?: number; backoffCapMs?: number
     await resetDb(h.db)
     h.metrics = createWorkerMetrics()
     h.slack.reset()
-    h.runtimes = { slack: createSlackRuntime({ db: h.db, apiBase: h.slack.url }), webhook: createWebhookRuntime() }
+    h.discord.reset()
+    h.runtimes = {
+      slack: createSlackRuntime({ db: h.db, apiBase: h.slack.url }),
+      webhook: createWebhookRuntime(),
+      discord: createDiscordRuntime({ db: h.db, botToken: 'discord-bot-token', apiBase: h.discord.url }),
+    }
     h.execute = createActionExecutor({ db: h.db, connections: h.connections, runtimes: h.runtimes, counters: h.metrics })
     h.actions = createActionsHandler({ db: h.db, queue: h.queue, execute: h.execute })
     h.agent = (runner) =>
@@ -107,6 +115,7 @@ export function useHarness(opts: { backoffBaseMs?: number; backoffCapMs?: number
 
   afterAll(async () => {
     await h.slack?.close()
+    await h.discord?.close()
     await h.queue?.stop()
     await close?.()
   })

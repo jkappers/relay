@@ -266,4 +266,14 @@ describe('console config', () => {
     })
     expect(serverEnvSchema.safeParse({ ...base, SIGNUP_MODE: 'yes' }).success).toBe(false)
   })
+
+  it('runs without Slack, but rejects a partial Slack app config', async () => {
+    const { serverEnvSchema } = await import('../src/config')
+    const base = { DATABASE_URL: 'postgres://x', RELAY_MASTER_KEY: Buffer.alloc(32, 1).toString('base64'), PUBLIC_URL: 'http://localhost:3000' }
+    const parsed = serverEnvSchema.parse(base)
+    expect(parsed.SLACK_SIGNING_SECRET).toBeUndefined()
+    const partial = serverEnvSchema.safeParse({ ...base, SLACK_CLIENT_ID: 'c' })
+    expect(partial.success).toBe(false)
+    expect(partial.error?.issues.map((i) => i.path[0]).sort()).toEqual(['SLACK_CLIENT_SECRET', 'SLACK_SIGNING_SECRET'])
+  })
 })

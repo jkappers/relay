@@ -18,4 +18,13 @@ describe('metrics registry', () => {
       ].join('\n'),
     )
   })
+
+  it('renders a gauge', () => {
+    const r = new MetricsRegistry()
+    const g = r.gauge('relay_test_up', 'A test gauge.')
+    expect(r.gauge('relay_test_up', 'again')).toBe(g)
+    g.set(1)
+    expect(r.render()).toBe(['# HELP relay_test_up A test gauge.', '# TYPE relay_test_up gauge', 'relay_test_up 1', ''].join('\n'))
+    expect(() => r.counter('relay_test_up', 'x')).toThrow()
+  })
 })

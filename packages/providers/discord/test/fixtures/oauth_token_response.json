@@ -1,0 +1,19 @@
+{
+  "token_type": "Bearer",
+  "access_token": "zMndOe7jFLXGawdlxMOdNvXjjOce5X",
+  "scope": "bot applications.commands identify",
+  "expires_in": 604800,
+  "refresh_token": "mgp8qnvBwJcmadwgCYKyYD5CAzGAX4",
+  "guild": {
+    "mfa_level": 0,
+    "application_id": null,
+    "name": "SomeTest",
+    "owner_id": "53908099506183680",
+    "id": "2909267986347357250",
+    "icon": null,
+    "description": null,
+    "features": [],
+    "roles": [],
+    "emojis": []
+  }
+}
