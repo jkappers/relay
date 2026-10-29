@@ -1,6 +1,5 @@
 import {
   InvalidPayloadError,
-  notImplemented,
   type ConnectionStore,
   type IngressInput,
   type ProviderAdapter,
@@ -71,7 +70,5 @@ export function createSlackAdapter(deps: SlackAdapterDeps): ProviderAdapter {
       return normalizeSlack(parseCallback(payload), { eventId, connectionId: connection.id })
     },
 
-    actions: {},
-    isSelfEcho: notImplemented('slack.isSelfEcho'),
   }
 }

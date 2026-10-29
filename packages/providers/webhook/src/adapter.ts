@@ -1,6 +1,6 @@
 import {
   computeSignature,
-  notImplemented,
+  type ProviderRuntime,
   safeEqual,
   sha256Hex,
   SignatureError,
@@ -81,7 +81,9 @@ export function createWebhookAdapter(deps: WebhookAdapterDeps): ProviderAdapter 
       }
     },
 
-    actions: {},
-    isSelfEcho: notImplemented('webhook.isSelfEcho'),
   }
+}
+
+export function createWebhookRuntime(): ProviderRuntime {
+  return { id: 'webhook', actions: {}, isSelfEcho: async () => false }
 }
