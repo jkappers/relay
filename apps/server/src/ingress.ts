@@ -4,13 +4,13 @@ import {
   InvalidPayloadError,
   log,
   SignatureError,
+  storeAndEnqueue,
   UnknownConnectionError,
   type Db,
   type IngressInput,
   type ProviderAdapter,
   type Queue,
 } from '@relay/core'
-import { storeAndEnqueue } from './events'
 import type { IngressOutcome, ServerMetrics } from './metrics'
 
 export interface IngressDeps {
@@ -57,7 +57,7 @@ export function ingressHandler(adapter: ProviderAdapter, deps: IngressDeps) {
       if (handshake) return finish('handshake', handshake)
 
       if (await adapter.lifecycle?.(input)) {
-        if (provider === 'slack') deps.metrics.connectionsRevoked.inc({ provider })
+        deps.metrics.connectionsRevoked.inc({ provider })
         return finish('lifecycle', c.body(null, 200))
       }
 

@@ -21,6 +21,7 @@
     "@hono/node-server": "2.1.5",
     "@hono/zod-validator": "0.9.1",
     "@relay/core": "workspace:*",
+    "@relay/provider-discord": "workspace:*",
     "@relay/provider-slack": "workspace:*",
     "@relay/provider-sms": "workspace:*",
     "@relay/provider-webhook": "workspace:*",

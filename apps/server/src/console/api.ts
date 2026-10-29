@@ -59,6 +59,8 @@ export interface ConsoleApiDeps {
   hasher: PasswordHasher
   signupMode: 'open' | 'closed'
   publicUrl: string
+  /** Which OAuth installs the server has app settings for. */
+  providers?: { slack: boolean; discord: boolean }
   nowSeconds: () => number
 }
 
@@ -337,6 +339,12 @@ export function consoleApi(deps: ConsoleApiDeps) {
 
   api.get('/connections/slack-url', (c) => c.json({ url: `${deps.publicUrl}/oauth/slack/start` }))
 
+  api.get('/connections/providers', (c) => {
+    const enabled = deps.providers ?? { slack: true, discord: false }
+    const start = (id: string, on: boolean) => (on ? `${deps.publicUrl}/oauth/${id}/start` : null)
+    return c.json({ slack: start('slack', enabled.slack), discord: start('discord', enabled.discord) })
+  })
+
   api.post('/connections/webhook', validated('json', webhookBody), async (c) => {
     const { name } = c.req.valid('json') as z.output<typeof webhookBody>
     const { connection, secret } = await deps.connections.createWebhook({ ...(name ? { name } : {}), ownerUserId: c.var.userId })
@@ -581,7 +589,7 @@ export function consoleApi(deps: ConsoleApiDeps) {
   const routedState = sql`case
             when ${events.routedAt} is null then 'pending'
             when ${connections.status} is distinct from 'active' then 'inactive'
-            when ${events.provider} = 'slack' and exists (
+            when exists (
               select 1 from sent_messages s
               where s.connection_id = events.connection_id
                 and s.channel = ${events.envelope}->'context'->>'channelId'
