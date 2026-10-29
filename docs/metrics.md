@@ -89,11 +89,19 @@ Gateway metrics (`apps/gateway`):
 
 `relay_actions_total` and `relay_router_events_total` carry `provider="sms"` and `type="send"` for SMS actions and `skipped_echo` for messages from the connection's own number.
 
+## Discord easy connect (server only)
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `relay_discord_link_total` | counter | `outcome` | One per identify-step callback (`/oauth/discord/start?step=identify`). `success`, `denied` (Discord sent `error` or no `code`), `not_allowed` (`DISCORD_ALLOWED_USER_IDS` is set and the user is not in it; HTTP 403), `exchange_failed` (token exchange, user lookup, or server list failed, or the code was a bot install code; HTTP 502). A bad or expired state counts in `relay_oauth_callbacks_total{outcome="bad_state"}`. |
+| `relay_discord_guild_pick_total` | counter | `kind` | A server was picked in the console. `direct`: the bot was already there and the connection was stored with no Discord round trip. `invite`: the user was sent to Discord to add the bot to that server (counted at `/start?guild_id=`, before the callback). |
+| `relay_discord_direct_connect_total` | counter | `outcome` | One per `POST /oauth/discord/connect`. `success`, `bad_grant` (the grant is expired, forged, or issued to another user; 410), `not_in_grant` (the server is not one the user was shown to manage; 403), `not_allowed` (403), `bot_absent` (the bot is not in the server; 409), `owned_elsewhere` (another account owns the server; 409), `error` (500). |
+
 ## `relay_oauth_callbacks_total` outcomes
 
 `provider` is `slack` or `discord`.
 
-`success`, `bad_state`, `denied` (the provider sent `error` or no `code`), `exchange_failed` (includes a Discord token response with no server), `not_allowed` (`SLACK_ALLOWED_USER_IDS` or `DISCORD_ALLOWED_USER_IDS` is set and the user is not in it; nothing stored, HTTP 403), `owned_elsewhere` (another Relay account already owns this Slack identity or Discord server; nothing stored, HTTP 409), `guild_mismatch` (Discord only: the redirect's `guild_id` differs from the server in the token response; nothing stored, HTTP 400).
+`success`, `bad_state`, `denied` (the provider sent `error` or no `code`), `exchange_failed` (includes a Discord token response with no server), `not_allowed` (`SLACK_ALLOWED_USER_IDS` or `DISCORD_ALLOWED_USER_IDS` is set and the user is not in it; nothing stored, HTTP 403), `owned_elsewhere` (another Relay account already owns this Slack identity or Discord server; nothing stored, HTTP 409), `guild_mismatch` (Discord only: the redirect's `guild_id`, or the server the signed state was minted for, differs from the server in the token response; nothing stored, HTTP 400). Identify-step callbacks are counted in `relay_discord_link_total` instead, except `bad_state`.
 
 ## `relay_router_events_total` outcomes
 

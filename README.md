@@ -432,7 +432,7 @@ The easy way: as an admin, open Settings in the console and follow the Slack car
 
 ## Discord
 
-A Discord connection is the Relay bot in one Discord server. The bot posts as itself. Discord has no way to post as a user. See [ADR 0008](docs/adr/0008-discord-gateway.md).
+A Discord connection is the Relay bot in one Discord server. The bot posts as itself. Discord has no way to post as a user. See [ADR 0008](docs/adr/0008-discord-gateway.md). The console connects a server in two steps: link Discord to list the servers you manage, then pick one. Servers the bot is already in connect at once; for the others, Discord opens with that server preselected. See [ADR 0012](docs/adr/0012-discord-easy-connect.md).
 
 What comes in:
 
