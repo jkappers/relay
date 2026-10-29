@@ -1,0 +1,26 @@
+{
+  "name": "relay",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "db:migrate": "pnpm --filter @relay/core db:migrate",
+    "db:generate": "pnpm --filter @relay/core db:generate",
+    "db:check": "pnpm --filter @relay/core db:check",
+    "dev:server": "pnpm --filter @relay/server start",
+    "dev:worker": "pnpm --filter @relay/worker start",
+    "check": "bash scripts/check.sh"
+  },
+  "devDependencies": {
+    "@relay/core": "workspace:*",
+    "@types/node": "^24.19.2",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}
