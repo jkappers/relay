@@ -4,7 +4,13 @@
   "type": "module",
   "scripts": {
     "start": "node --env-file-if-exists=../../.env --import tsx src/main.ts",
-    "connections:create-webhook": "node --env-file-if-exists=../../.env --import tsx src/cli/create-webhook-connection.ts"
+    "connections:create-webhook": "node --env-file-if-exists=../../.env --import tsx src/cli/create-webhook-connection.ts",
+    "destinations:create": "node --env-file-if-exists=../../.env --import tsx src/cli/destinations-create.ts",
+    "routes:create": "node --env-file-if-exists=../../.env --import tsx src/cli/routes-create.ts",
+    "routes:list": "node --env-file-if-exists=../../.env --import tsx src/cli/routes-list.ts",
+    "deliveries:list": "node --env-file-if-exists=../../.env --import tsx src/cli/deliveries-list.ts",
+    "deliveries:replay": "node --env-file-if-exists=../../.env --import tsx src/cli/deliveries-replay.ts",
+    "events:replay": "node --env-file-if-exists=../../.env --import tsx src/cli/events-replay.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.1.5",

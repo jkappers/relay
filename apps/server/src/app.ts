@@ -10,7 +10,7 @@ import { slackOAuthRoutes } from './oauth'
 import { deriveStateKey } from './oauth-state'
 
 export interface AppDeps {
-  config: Pick<ServerConfig, 'PUBLIC_URL' | 'SLACK_SIGNING_SECRET' | 'SLACK_CLIENT_ID' | 'SLACK_CLIENT_SECRET' | 'RELAY_MASTER_KEY'>
+  config: Pick<ServerConfig, 'PUBLIC_URL' | 'SLACK_SIGNING_SECRET' | 'SLACK_CLIENT_ID' | 'SLACK_CLIENT_SECRET' | 'SLACK_ALLOWED_USER_IDS' | 'RELAY_MASTER_KEY'>
   db: Db
   queue: Queue
   connections: ConnectionStore
@@ -42,6 +42,7 @@ export function createApp(deps: AppDeps) {
       slackOAuthRoutes({
         clientId: deps.config.SLACK_CLIENT_ID,
         clientSecret: deps.config.SLACK_CLIENT_SECRET,
+        allowedUserIds: deps.config.SLACK_ALLOWED_USER_IDS,
         publicUrl: deps.config.PUBLIC_URL,
         stateKey: deriveStateKey(deps.config.RELAY_MASTER_KEY),
         connections: deps.connections,

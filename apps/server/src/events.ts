@@ -16,7 +16,7 @@ export type StoreResult =
   | { status: 'duplicate'; eventId: string; requeued: boolean }
 
 async function enqueue(tx: Tx, queue: Queue, eventId: string) {
-  await queue.send<RouteJob>(QUEUES.route, { eventId }, { tx })
+  await queue.send<RouteJob>(QUEUES.route, { eventId }, { tx, singletonKey: eventId })
   await tx.update(schema.events).set({ enqueuedAt: sql`now()` }).where(eq(schema.events.id, eventId))
 }
 

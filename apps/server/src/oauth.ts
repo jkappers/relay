@@ -13,6 +13,7 @@ const COOKIE_PATH = '/oauth/slack'
 export interface SlackOAuthDeps {
   clientId: string
   clientSecret: string
+  allowedUserIds: readonly string[]
   publicUrl: string
   stateKey: Buffer
   connections: ConnectionStore
@@ -67,6 +68,11 @@ export function slackOAuthRoutes(deps: SlackOAuthDeps) {
           redirectUri,
           ...(deps.fetch ? { fetch: deps.fetch } : {}),
         })
+        if (!deps.allowedUserIds.includes(grant.userId)) {
+          outcome('not_allowed')
+          log.warn('slack oauth: user not allowed', { userId: grant.userId, teamId: grant.teamId })
+          return c.text('this Slack user is not allowed to connect', 403)
+        }
         const connection = await deps.connections.upsertSlack(grant)
         outcome('success')
         log.info('slack connection stored', { connectionId: connection.id, teamId: grant.teamId, userId: grant.userId })
