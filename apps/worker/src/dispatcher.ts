@@ -12,6 +12,7 @@ import {
   log,
   parseRetryAfterMs,
   QUEUES,
+  readBodyCapped,
   RELAY_VERSION,
   schema,
   type Cipher,
@@ -41,24 +42,6 @@ export interface DispatcherDeps {
 
 type Failure = { retryable: boolean; statusCode: number | null; error: string; retryAfterMs?: number | null }
 type Outcome = { ok: true; statusCode: number; body: unknown } | ({ ok: false } & Failure)
-
-async function readCapped(res: Response, maxBytes: number): Promise<string | null> {
-  if (!res.body) return ''
-  const reader = res.body.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    total += value.byteLength
-    if (total > maxBytes) {
-      await reader.cancel().catch(() => {})
-      return null
-    }
-    chunks.push(value)
-  }
-  return Buffer.concat(chunks).toString('utf8')
-}
 
 function describeError(err: unknown, timeoutMs: number): string {
   if (err instanceof Error && err.name === 'TimeoutError') return `timeout after ${timeoutMs}ms`
@@ -111,7 +94,7 @@ export function createDispatcher(deps: DispatcherDeps) {
       let parsed: unknown = null
       try {
         if ((res.headers.get('content-type') ?? '').toLowerCase().includes('json')) {
-          const text = await readCapped(res, MAX_STORED_RESPONSE_BYTES)
+          const text = await readBodyCapped(res, MAX_STORED_RESPONSE_BYTES)
           if (text !== null) parsed = JSON.parse(text)
         } else {
           await res.body?.cancel()
@@ -163,6 +146,15 @@ export function createDispatcher(deps: DispatcherDeps) {
       await db
         .update(schema.deliveries)
         .set({ status: 'failed', lastError: 'destination disabled', completedAt: new Date(), nextAttemptAt: null, updatedAt: new Date() })
+        .where(pending)
+      metrics.deliveryAttempts.inc({ outcome: 'failed_non_retryable' })
+      return
+    }
+
+    if (destination.kind === 'tool') {
+      await db
+        .update(schema.deliveries)
+        .set({ status: 'failed', lastError: 'not_deliverable', completedAt: new Date(), nextAttemptAt: null, updatedAt: new Date() })
         .where(pending)
       metrics.deliveryAttempts.inc({ outcome: 'failed_non_retryable' })
       return

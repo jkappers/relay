@@ -77,6 +77,7 @@ async function main() {
     execute,
     runtimes,
     runner: config.RELAY_AGENT_RUNNER === 'fake' ? createDemoRunner() : createSdkRunner(),
+    cipher,
     backoffBaseMs: config.AGENT_BACKOFF_BASE_MS,
     backoffCapMs: config.AGENT_BACKOFF_CAP_MS,
   })

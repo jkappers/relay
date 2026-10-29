@@ -1,4 +1,4 @@
-import { and, eq, like, lt, sql } from 'drizzle-orm'
+import { and, eq, inArray, like, lt, sql } from 'drizzle-orm'
 import {
   agentConfigSchema,
   AGENT_LEASE_GRACE_SECONDS,
@@ -7,7 +7,9 @@ import {
   MAX_AGENT_ATTEMPTS,
   QUEUES,
   schema,
+  toolConfigSchema,
   type ActionExecutor,
+  type Cipher,
   type AgentConfig,
   type AgentJob,
   type Db,
@@ -24,6 +26,7 @@ import {
   type AgentRunner,
   type AgentUsage,
   type ToolCallRecord,
+  type ToolDestinationSpec,
 } from '@relay/destination-agent'
 import type { WorkerMetrics } from './metrics'
 
@@ -34,6 +37,8 @@ export interface AgentHandlerDeps {
   execute: ActionExecutor
   runtimes: Record<string, ProviderRuntime>
   runner: AgentRunner
+  cipher: Cipher
+  fetch?: typeof fetch
   backoffBaseMs: number
   backoffCapMs: number
   random?: () => number
@@ -98,6 +103,50 @@ export function createAgentHandler(deps: AgentHandlerDeps) {
     metrics.agentTokens.inc({ kind: 'cache_read' }, result.usage.cacheReadTokens)
     metrics.agentTokens.inc({ kind: 'cache_creation' }, result.usage.cacheCreationTokens)
     metrics.agentCostUsd.inc({}, result.costUsd)
+  }
+
+  async function loadToolDestinations(
+    ids: readonly string[],
+    connectionId: string,
+    routeId: string,
+    actor: string | null | undefined,
+    deliveryId: string,
+  ): Promise<ToolDestinationSpec[]> {
+    if (ids.length === 0) return []
+    const rows = await db.select().from(schema.destinations).where(inArray(schema.destinations.id, [...ids]))
+    const [route] = await db
+      .select({ actorIn: schema.routes.actorIn, connectionId: schema.routes.connectionId })
+      .from(schema.routes)
+      .where(eq(schema.routes.id, routeId))
+    const trustedActor = Boolean(route && route.connectionId === connectionId && actor && (route.actorIn ?? []).includes(actor))
+    const out: ToolDestinationSpec[] = []
+    for (const id of ids) {
+      const row = rows.find((r) => r.id === id)
+      if (row && row.connectionId !== connectionId) {
+        metrics.crossTenantBlocked.inc({ stage: 'agent_tool' })
+        log.warn('agent: tool destination is in another connection, skipped', { deliveryId, toolDestinationId: id })
+        continue
+      }
+      if (!row || row.kind !== 'tool') {
+        metrics.agentToolsWithheld.inc({ reason: 'missing' })
+        continue
+      }
+      if (!row.enabled) {
+        metrics.agentToolsWithheld.inc({ reason: 'disabled' })
+        continue
+      }
+      const cfg = toolConfigSchema.safeParse(row.config)
+      if (!cfg.success || !row.url || !row.secretCiphertext) {
+        metrics.agentToolsWithheld.inc({ reason: 'invalid' })
+        continue
+      }
+      if (cfg.data.sensitive && !trustedActor) {
+        metrics.agentToolsWithheld.inc({ reason: 'sensitive' })
+        continue
+      }
+      out.push({ id: row.id, url: row.url, secret: deps.cipher.decrypt(row.secretCiphertext), timeoutMs: row.timeoutMs, config: cfg.data })
+    }
+    return out
   }
 
   const usageSet = (result: AgentRunResult | null, calls: ToolCallRecord[]) => {
@@ -238,6 +287,8 @@ export function createAgentHandler(deps: AgentHandlerDeps) {
       abort.abort()
     }, config.timeoutSeconds * 1000)
 
+    const envelope = event.envelope as Envelope
+    const toolDestinations = await loadToolDestinations(config.toolDestinationIds, event.connectionId, delivery.routeId, envelope.actor, delivery.id)
     const toolkit = await createToolkit({
       db,
       execute: deps.execute,
@@ -248,6 +299,12 @@ export function createAgentHandler(deps: AgentHandlerDeps) {
       maxMutatingActions: config.maxMutatingActions,
       signal: abort.signal,
       onToolCall: (type, outcome) => metrics.agentToolCalls.inc({ type, outcome }),
+      toolDestinations,
+      envelope,
+      eventId: event.id,
+      ...(deps.fetch ? { fetch: deps.fetch } : {}),
+      onToolDestinationCall: (outcome) => metrics.toolDestinationCalls.inc({ outcome }),
+      onToolWithheld: (reason) => metrics.agentToolsWithheld.inc({ reason }),
     })
 
     let result: AgentRunResult | null = null
@@ -262,7 +319,7 @@ export function createAgentHandler(deps: AgentHandlerDeps) {
       const running = deps.runner.run({
         model: config.model,
         systemPrompt: buildSystemPrompt(config.systemPrompt, toolkit.tools, config.maxMutatingActions, event.provider),
-        prompt: buildUserPrompt(event.envelope as Envelope, toolkit.tools.some((t) => t.action === 'thread.history')),
+        prompt: buildUserPrompt(envelope, toolkit.tools.some((t) => t.action === 'thread.history')),
         maxTurns: config.maxTurns,
         tools: toolkit.tools,
         signal: abort.signal,

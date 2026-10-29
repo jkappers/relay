@@ -7,6 +7,7 @@ export const ATTEMPT_OUTCOMES = ['success', 'retry', 'failed_exhausted', 'failed
 
 export const AGENT_RUN_OUTCOMES = ['succeeded', 'failed', 'retried', 'not_retried_after_mutation'] as const
 export const AGENT_TOOL_OUTCOMES = ['succeeded', 'failed', 'retry', 'denied', 'cap_reached'] as const
+export const AGENT_TOOLS_WITHHELD_REASONS = ['missing', 'disabled', 'invalid', 'sensitive', 'name_collision'] as const
 export const AGENT_TOKEN_KINDS = ['input', 'output', 'cache_read', 'cache_creation'] as const
 
 export function createWorkerMetrics(registry = new MetricsRegistry()) {
@@ -38,8 +39,18 @@ export function createWorkerMetrics(registry = new MetricsRegistry()) {
     agentRuns: registry.counter('relay_agent_runs_total', 'Agent run attempts by outcome.', ['outcome'] as const),
     agentToolCalls: registry.counter(
       'relay_agent_tool_calls_total',
-      'Agent tool calls by action type and outcome.',
+      'Agent tool calls by action type (or "tool" for tool destinations) and outcome.',
       ['type', 'outcome'] as const,
+    ),
+    toolDestinationCalls: registry.counter(
+      'relay_tool_destination_calls_total',
+      'Agent calls to tool destinations, by outcome.',
+      ['outcome'] as const,
+    ),
+    agentToolsWithheld: registry.counter(
+      'relay_agent_tools_withheld_total',
+      'Tool destinations listed on an agent but not offered in a run, by reason.',
+      ['reason'] as const,
     ),
     agentTokens: registry.counter('relay_agent_tokens_total', 'Tokens used by agent runs, by kind.', ['kind'] as const),
     agentCostUsd: registry.counter('relay_agent_cost_usd_total', 'Estimated agent cost in US dollars, as reported by the SDK.'),
