@@ -44,6 +44,7 @@ import {
 import { HasherBusyError, PASSWORD_MAX, type PasswordHasher } from '../accounts/password'
 import { createUser, credentialsInput, EmailTakenError, findUserByEmail } from '../accounts/users'
 import type { ServerMetrics } from '../metrics'
+import { adminApi, type AdminApiDeps } from './admin'
 import {
   createLoginLimiter,
   EMAIL_MAX_FAILURES,
@@ -67,6 +68,7 @@ export interface ConsoleApiDeps {
   /** Which OAuth installs the server has app settings for. */
   providers?: { slack: boolean; discord: boolean }
   nowSeconds: () => number
+  admin: Pick<AdminApiDeps, 'providerApps' | 'providerAppEnv' | 'slackApiBase' | 'discordApiBase' | 'fetch'>
 }
 
 type Env = { Variables: { userId: string; connectionId: string } }
@@ -337,7 +339,7 @@ export function consoleApi(deps: ConsoleApiDeps) {
   })
 
   api.get('/session', async (c) => {
-    const [user] = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, c.var.userId))
+    const [user] = await db.select({ id: users.id, email: users.email, isAdmin: users.isAdmin }).from(users).where(eq(users.id, c.var.userId))
     const mine = await deps.connections.listForUser(c.var.userId)
     return c.json({ user, connections: mine.map(serializeConnection), signup: deps.signupMode })
   })
@@ -902,6 +904,7 @@ export function consoleApi(deps: ConsoleApiDeps) {
     return c.json({ queued: true }, 202)
   })
 
+  api.route('/admin', adminApi({ db, metrics, publicUrl: deps.publicUrl, ...deps.admin }))
   api.route('/c/:connectionId', t)
   api.all('*', (c) => c.json({ error: 'not_found' }, 404))
 

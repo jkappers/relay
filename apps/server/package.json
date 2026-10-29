@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node --env-file-if-exists=../../.env --import tsx src/main.ts",
     "users:create": "node --env-file-if-exists=../../.env --import tsx src/cli/users-create.ts",
+    "users:grant-admin": "node --env-file-if-exists=../../.env --import tsx src/cli/users-grant-admin.ts",
     "users:set-password": "node --env-file-if-exists=../../.env --import tsx src/cli/users-set-password.ts",
     "tenancy:adopt": "node --env-file-if-exists=../../.env --import tsx src/cli/tenancy-adopt.ts",
     "connections:create-webhook": "node --env-file-if-exists=../../.env --import tsx src/cli/create-webhook-connection.ts",

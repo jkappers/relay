@@ -55,6 +55,25 @@ export function createServerMetrics(registry = new MetricsRegistry()) {
       'Successful console API changes by resource and action.',
       ['resource', 'action'] as const,
     ),
+    adminDenied: registry.counter(
+      'relay_admin_denied_total',
+      'Admin API requests from a signed-in user who is not an instance admin. Answered 404.',
+    ),
+    providerAppChanges: registry.counter(
+      'relay_provider_app_changes_total',
+      'Provider app settings saved or removed through the admin API.',
+      ['provider'] as const,
+    ),
+    providerAppTests: registry.counter(
+      'relay_provider_app_tests_total',
+      'Admin-initiated provider app tests by result.',
+      ['provider', 'result'] as const,
+    ),
+    providerAppConfigErrors: registry.counter(
+      'relay_provider_app_config_errors_total',
+      'Provider app settings that could not be used, by reason.',
+      ['provider', 'reason'] as const,
+    ),
     oauthCallbacks: registry.counter(
       'relay_oauth_callbacks_total',
       'OAuth callback results.',

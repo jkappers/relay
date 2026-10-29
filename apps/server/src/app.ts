@@ -1,7 +1,18 @@
 import { fileURLToPath } from 'node:url'
 import { Hono } from 'hono'
 import { sql } from 'drizzle-orm'
-import { createActionExecutor, deriveReplyTokenKey, PROMETHEUS_CONTENT_TYPE, type Cipher, type ConnectionStore, type Db, type Queue } from '@relay/core'
+import {
+  createActionExecutor,
+  createProviderAppStore,
+  deriveReplyTokenKey,
+  PROMETHEUS_CONTENT_TYPE,
+  providerAppEnv,
+  type Cipher,
+  type ConnectionStore,
+  type Db,
+  type ProviderAppStore,
+  type Queue,
+} from '@relay/core'
 import { createDiscordRuntime } from '@relay/provider-discord'
 import { createSlackAdapter, createSlackRuntime } from '@relay/provider-slack'
 import { createSmsAdapter, createSmsRuntime } from '@relay/provider-sms'
@@ -43,6 +54,7 @@ export interface AppDeps {
   fetch?: typeof fetch
   nowSeconds?: () => number
   hasher?: PasswordHasher
+  providerApps?: ProviderAppStore
 }
 
 export function createApp(deps: AppDeps) {
@@ -69,6 +81,16 @@ export function createApp(deps: AppDeps) {
 
   const nowSeconds = deps.nowSeconds ?? (() => Math.floor(Date.now() / 1000))
   const sessions = createSessionStore(deps.db, nowSeconds)
+  const appEnv = providerAppEnv(deps.config)
+  const providerApps =
+    deps.providerApps ??
+    createProviderAppStore({
+      db: deps.db,
+      masterKey: deps.config.RELAY_MASTER_KEY,
+      env: appEnv,
+      ttlMs: 5000,
+      counters: { configErrors: deps.metrics.providerAppConfigErrors },
+    })
   const distDir = deps.consoleDistDir ?? fileURLToPath(new URL('../../console/dist', import.meta.url))
 
   const app = new Hono()
@@ -110,6 +132,13 @@ export function createApp(deps: AppDeps) {
         publicUrl: deps.config.PUBLIC_URL,
         providers: { slack: slackApp !== null, discord: discordApp !== null },
         nowSeconds,
+        admin: {
+          providerApps,
+          providerAppEnv: appEnv,
+          slackApiBase: deps.config.SLACK_API_BASE_URL ?? 'https://slack.com/api',
+          discordApiBase: deps.config.DISCORD_API_BASE_URL ?? 'https://discord.com/api/v10',
+          fetch: deps.fetch ?? fetch,
+        },
       }),
     )
 
