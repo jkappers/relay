@@ -14,6 +14,10 @@ Served at `GET /metrics` on the server (`PORT`), on the worker (`WORKER_METRICS_
 | `relay_console_signups_total` | counter | `outcome` | One per `POST /api/users`. See below. |
 | `relay_tenant_denied_total` | counter | none | A signed-in user asked for a connection they are not a member of. Answered 404. |
 | `relay_console_mutations_total` | counter | `resource`, `action` | Console API changes that succeeded. See below. |
+| `relay_admin_denied_total` | counter | none | A signed-in user who is not an instance admin called `/api/admin/*`. Answered 404. |
+| `relay_provider_app_changes_total` | counter | `provider` | Slack or Discord app settings saved (`PUT`) or removed (`DELETE`) through `/api/admin/integrations`. |
+| `relay_provider_app_config_errors_total` | counter | `provider`, `reason` | Saved app settings that could not be used. See below. |
+| `relay_provider_app_tests_total` | counter | `provider`, `result` | One per admin click on Test. See below. |
 
 Worker metrics:
 
@@ -249,3 +253,23 @@ Changes made through the console API that succeeded. Labels `resource` and `acti
 | `event` | `replay` |
 | `delivery` | `replay` |
 | `token` | `revoke` |
+
+## `relay_provider_app_config_errors_total` reasons
+
+Counted by the provider app store each time it loads a provider's settings from the database (at most once per cache TTL per process).
+
+| Reason | Meaning |
+|---|---|
+| `decrypt` | A saved secret does not decrypt (wrong `RELAY_MASTER_KEY`, or a corrupt row). The provider is `invalid`. Env is not used. |
+| `validate` | The row decrypts but a value fails validation. The provider is `invalid`. Env is not used. |
+| `db` | The read failed. The last good value is kept if there is one. |
+
+## `relay_provider_app_tests_total` results
+
+| Result | Meaning |
+|---|---|
+| `ok` | Every check that can run passed. The Slack signing secret is never testable and does not count against this. |
+| `failed` | The provider rejected a value (bad secret, bad token, or a token from a different app). |
+| `error` | The provider could not be reached, timed out, or answered something unexpected. |
+| `incomplete` | A check was skipped because a value is missing (Discord from env without all three values). |
+| `not_configured` | The provider is `missing` or `invalid`. No request was sent. |

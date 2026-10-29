@@ -54,7 +54,7 @@ cp .env.example .env          # then fill in the values
 docker compose up -d --wait   # Postgres 17 on localhost:54329
 pnpm install
 pnpm db:migrate
-printf '%s' 'a long passphrase' | pnpm --filter @relay/server users:create --email you@example.com
+printf '%s' 'a long passphrase' | pnpm --filter @relay/server users:create --email you@example.com --admin
 pnpm build:console
 pnpm dev:server               # http://localhost:$PORT
 pnpm dev:worker
@@ -102,6 +102,8 @@ Tests use the `relay_test` database. Compose creates it on first start, so tests
 | `RELAY_AGENT_RUNNER` | worker | `sdk` (default) or `fake`. `fake` posts a canned reply with no API call, for tests and demos. Refused when `NODE_ENV=production`. |
 | `RELAY_CLASSIFIER` | worker | `anthropic` (default) or `fake`. `fake` picks routes whose intent shares a word with the text, with no API call, for tests and demos. Refused when `NODE_ENV=production`. |
 | `TEST_DATABASE_URL` | tests | Optional. Defaults to `relay_test` in compose. |
+
+The `SLACK_*` and `DISCORD_*` app settings (signing secret, client id and secret, bot token, allowed user ids) are deprecated in favor of Settings: an instance admin saves them through `/api/admin/integrations`, encrypted in the database. Env stays a fallback: it applies only while no settings are saved for that provider. Once saved, the database wins. If saved settings can't be decrypted or fail validation (for example after changing `RELAY_MASTER_KEY`), the provider is marked invalid and env is not used. See [ADR 0011](docs/adr/0011-instance-admins-and-provider-apps.md). The server, worker, and gateway read saved settings starting in M12b; until then they still use env.
 
 Make a master key:
 
@@ -152,7 +154,8 @@ The console does most of what these do. Run from the repo root with `pnpm --filt
 
 | Script | Does |
 |---|---|
-| `users:create --email E` | Creates an account. Reads the password (12 to 1024 characters) from stdin. |
+| `users:create --email E [--admin]` | Creates an account. Reads the password (12 to 1024 characters) from stdin. `--admin` makes it an instance admin. |
+| `users:grant-admin --email E [--revoke]` | Makes E an instance admin, or with `--revoke` removes it. Applies on that user's next request. Sign-up through the console never grants admin. |
 | `users:set-password --email E` | Sets a new password from stdin and signs that user out everywhere. Use it to reset a forgotten password. |
 | `tenancy:adopt --email E --connection C` | One-time upgrade from before accounts. See below. |
 | `connections:create-webhook --owner E [--name N]` | Creates a webhook connection owned by E. Prints its id and secret once. |
@@ -217,6 +220,8 @@ Security notes:
 - `/oauth/slack/start` needs a console session. The callback checks its signed state, which names your account. A Slack account can belong to only one Relay account. If someone else already connected it, you get a 409 and nothing changes.
 - Event text comes from other people. The UI only shows it as plain text, and the page runs under a strict Content-Security-Policy.
 - Details are in `docs/adr/0005-console.md`.
+
+Instance admins (granted only by `users:create --admin` or `users:grant-admin`) also get `/api/admin/integrations`: the shared Slack and Discord app settings, a Test button per provider, and the redirect and event URLs to paste into each developer portal. Others get 404 there. Secrets are write-only: the API reports whether each is set, never its value. Changing the client id (or a Discord bot token from another app) while connections exist needs `confirmClientIdChange: true`, since every existing connection of that provider stops working. See [ADR 0011](docs/adr/0011-instance-admins-and-provider-apps.md).
 
 ## Agents
 
