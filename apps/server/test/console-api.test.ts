@@ -251,6 +251,45 @@ describe('routes', () => {
     expect((await api('PUT', `/api/routes/${randomUUID()}`, { name: 'r', eventType: 'x', destinationIds: [d] })).status).toBe(404)
   })
 
+  it('stores classifier selection, intent and fallback, and keeps them on an update that omits them', async () => {
+    const d = await seedDestination()
+    const res = await api('POST', '/api/routes', {
+      name: 'g',
+      eventType: 'x',
+      destinationIds: [d],
+      selection: 'classifier',
+      intent: '  Questions about invoices  ',
+      classifierFallback: 'deliver',
+    })
+    expect(res.status).toBe(201)
+    const route = await json(res)
+    expect(route).toMatchObject({ selection: 'classifier', intent: 'Questions about invoices', classifierFallback: 'deliver' })
+
+    const kept = await json(api('PUT', `/api/routes/${route.id}`, { name: 'g2', eventType: 'x', destinationIds: [d] }))
+    expect(kept).toMatchObject({ name: 'g2', selection: 'classifier', intent: 'Questions about invoices', classifierFallback: 'deliver' })
+
+    const cleared = await api('PUT', `/api/routes/${route.id}`, { name: 'g2', eventType: 'x', destinationIds: [d], intent: '' })
+    expect(cleared.status).toBe(400)
+    const back = await json(api('PUT', `/api/routes/${route.id}`, { name: 'g2', eventType: 'x', destinationIds: [d], selection: 'always', intent: null }))
+    expect(back).toMatchObject({ selection: 'always', intent: null })
+
+    const plain = await json(api('POST', '/api/routes', { name: 'p', eventType: 'x', destinationIds: [d] }))
+    expect(plain).toMatchObject({ selection: 'always', intent: null, classifierFallback: 'drop' })
+  })
+
+  it('validates classifier route fields', async () => {
+    const d = await seedDestination()
+    const base = { name: 'g', eventType: 'x', destinationIds: [d] }
+    const noIntent = await api('POST', '/api/routes', { ...base, selection: 'classifier' })
+    expect(noIntent.status).toBe(400)
+    expect(JSON.stringify(await json(noIntent))).toContain('intent')
+    expect((await api('POST', '/api/routes', { ...base, selection: 'classifier', intent: '   ' })).status).toBe(400)
+    expect((await api('POST', '/api/routes', { ...base, selection: 'classifier', intent: 'a'.repeat(501) })).status).toBe(400)
+    expect((await api('POST', '/api/routes', { ...base, selection: 'llm', intent: 'x' })).status).toBe(400)
+    expect((await api('POST', '/api/routes', { ...base, classifierFallback: 'maybe' })).status).toBe(400)
+    expect((await api('POST', '/api/routes', { ...base, selection: 'classifier', intent: 'a'.repeat(500) })).status).toBe(201)
+  })
+
   it('previews matches against the last 50 events', async () => {
     const hit = await seedEvent(conn, { text: 'Deploy FAILED now', type: 'slack.message.channel' })
     await seedEvent(conn, { text: 'all good', type: 'slack.message.channel' })
@@ -269,6 +308,31 @@ describe('routes', () => {
 
     for (let i = 0; i < 60; i++) await seedEvent(conn, { text: 'bulk' })
     expect((await json(api('POST', '/api/routes/preview', { eventType: '*x' }))).scanned).toBe(50)
+  })
+})
+
+describe('classifier settings', () => {
+  it('reads and updates the mode and daily limit', async () => {
+    expect(await json(api('GET', '/api/classifier'))).toEqual({ mode: 'off', dailyLimit: 1000 })
+    const res = await api('PUT', '/api/classifier', { mode: 'shadow', dailyLimit: 50 })
+    expect(res.status).toBe(200)
+    expect(await json(res)).toEqual({ mode: 'shadow', dailyLimit: 50 })
+    expect(await json(api('GET', '/api/classifier'))).toEqual({ mode: 'shadow', dailyLimit: 50 })
+    expect(h.metrics.consoleMutations.get({ resource: 'connection', action: 'update' })).toBe(1)
+  })
+
+  it('validates the body', async () => {
+    for (const body of [
+      { mode: 'on', dailyLimit: 1 },
+      { mode: 'enforce', dailyLimit: -1 },
+      { mode: 'enforce', dailyLimit: 100_001 },
+      { mode: 'enforce', dailyLimit: 1.5 },
+      { mode: 'enforce' },
+      { mode: 'enforce', dailyLimit: 1, extra: true },
+    ]) {
+      expect((await api('PUT', '/api/classifier', body)).status, JSON.stringify(body)).toBe(400)
+    }
+    expect(await json(api('GET', '/api/classifier'))).toEqual({ mode: 'off', dailyLimit: 1000 })
   })
 })
 

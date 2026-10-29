@@ -495,7 +495,7 @@ describe('loop guard', () => {
 
   it('a running route job can queue its own recheck under policy short', async () => {
     const connection = await withRoute()
-    const router = createRouter({ db: h.db, queue: h.queue, metrics: h.metrics, runtimes: h.runtimes, recheckDelayMs: 300 })
+    const router = createRouter({ db: h.db, queue: h.queue, metrics: h.metrics, runtimes: h.runtimes, classifier: h.classifier, recheckDelayMs: 300 })
     const ev = await insertEvent(h, connection.id, selfEvent())
     await h.queue.work<RouteJob>(QUEUES.route, async (jobs) => {
       for (const j of jobs) await router(j.data)

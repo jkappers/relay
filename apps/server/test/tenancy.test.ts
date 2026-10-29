@@ -20,6 +20,7 @@ const TABLES = [
   'actions_log',
   'agent_runs',
   'revoked_tokens',
+  'route_decisions',
 ] as const
 
 async function snapshot(): Promise<string> {
@@ -149,7 +150,7 @@ describe('tenant isolation', () => {
 
   it("never shows B's rows in A's lists, previews, or overview", async () => {
     const lists = tenantRoutes().filter((r) => r.method === 'GET' && !r.path.includes(':id'))
-    expect(lists.map((r) => r.path).sort()).toEqual(['/deliveries', '/destinations', '/events', '/events/facets', '/overview', '/routes'])
+    expect(lists.map((r) => r.path).sort()).toEqual(['/classifier', '/deliveries', '/destinations', '/events', '/events/facets', '/overview', '/routes'])
     for (const r of lists) {
       const text = await (await a.account.api('GET', `/api/c/${a.connectionId}${r.path}`)).text()
       for (const s of secretsOf(b)) expect(text, `${r.path} leaks ${s}`).not.toContain(s)

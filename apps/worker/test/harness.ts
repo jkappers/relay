@@ -23,6 +23,7 @@ import {
   type AgentConfigInput,
   type Envelope,
 } from '@relay/core'
+import { createFakeClassifier, type Classifier, type ClassifyInput, type FakeClassifierScript } from '@relay/classifier'
 import type { AgentRunner } from '@relay/destination-agent'
 import { resetDb, startDiscordStub, startSlackStub, TEST_DATABASE_URL, TEST_MASTER_KEY, type DiscordStub, type SlackStub } from '@relay/core/testing'
 import { createDiscordRuntime } from '@relay/provider-discord'
@@ -50,6 +51,10 @@ export interface Harness {
   execute: ReturnType<typeof createActionExecutor>
   actions: ReturnType<typeof createActionsHandler>
   agent(runner: AgentRunner): ReturnType<typeof createAgentHandler>
+  classifier: Classifier
+  /** What the fake classifier answers. Reset to "no labels" before each test. */
+  classify: FakeClassifierScript
+  classifierCalls: ClassifyInput[]
 }
 
 export const PUBLIC_URL = 'http://relay.test'
@@ -98,7 +103,13 @@ export function useHarness(opts: { backoffBaseMs?: number; backoffCapMs?: number
         backoffBaseMs: 10,
         backoffCapMs: 50,
       })
-    h.router = createRouter({ db: h.db, queue: h.queue, metrics: h.metrics, runtimes: h.runtimes })
+    h.classify = () => {}
+    h.classifierCalls = []
+    h.classifier = createFakeClassifier((input) => {
+      h.classifierCalls.push(input)
+      return h.classify(input)
+    })
+    h.router = createRouter({ db: h.db, queue: h.queue, metrics: h.metrics, runtimes: h.runtimes, classifier: h.classifier })
     h.dispatcher = createDispatcher({
       db: h.db,
       queue: h.queue,

@@ -28,4 +28,10 @@ describe('worker config', () => {
     expect(parsed.DISCORD_API_BASE_URL).toBe('https://discord.com/api/v10')
     expect(workerEnvSchema.parse({ ...base, DISCORD_BOT_TOKEN: ' t ' }).DISCORD_BOT_TOKEN).toBe('t')
   })
+
+  it('defaults to the Anthropic classifier and refuses the fake one in production', () => {
+    expect(workerEnvSchema.parse(base)).toMatchObject({ RELAY_CLASSIFIER: 'anthropic' })
+    expect(workerEnvSchema.safeParse({ ...base, RELAY_CLASSIFIER: 'fake' }).success).toBe(true)
+    expect(workerEnvSchema.safeParse({ ...base, RELAY_CLASSIFIER: 'fake', NODE_ENV: 'production' }).success).toBe(false)
+  })
 })
