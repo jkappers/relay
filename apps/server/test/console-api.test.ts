@@ -386,6 +386,99 @@ describe('events', () => {
     expect(trace(inactive).routed).toBe('inactive')
   })
 
+  it('filters by outcome facet, each event in exactly one facet', async () => {
+    const conn = await seedConnection()
+    const dest = await seedDestination()
+    const dest2 = await seedDestination()
+    const route = await json(api('POST', '/api/routes', { name: 'r', eventType: '*', destinationIds: [dest, dest2] }))
+    const deliver = async (eventId: string, status: 'pending' | 'succeeded' | 'failed', destinationId = dest) => {
+      const [d] = await h.db.insert(schema.deliveries).values({ eventId, routeId: route.id, destinationId, status }).returning()
+      return d!
+    }
+
+    const unroutedYet = await seedEvent(conn)
+    const unmatched = await seedEvent(conn, { routed: true })
+    const ok = await seedEvent(conn, { routed: true })
+    await deliver(ok, 'succeeded')
+    const failedDelivery = await seedEvent(conn, { routed: true })
+    await deliver(failedDelivery, 'failed')
+    await deliver(failedDelivery, 'pending', dest2)
+    const failedAction = await seedEvent(conn, { routed: true })
+    const okDelivery = await deliver(failedAction, 'succeeded')
+    await h.db.insert(schema.actionsLog).values({ deliveryId: okDelivery.id, idempotencyKey: 'f', type: 'reply', params: {}, status: 'failed' })
+    const retrying = await seedEvent(conn, { routed: true })
+    await deliver(retrying, 'pending')
+
+    const slackConn = await h.connections.upsertSlack({ teamId: 'T1', userId: 'U1', accessToken: 'xoxp' })
+    const echo = await seedEvent(slackConn.id, {
+      provider: 'slack',
+      type: 'slack.message.im',
+      context: { channelId: 'D1', threadId: null, messageId: '1.2' },
+      routed: true,
+    })
+    await h.db.insert(schema.sentMessages).values({ connectionId: slackConn.id, channel: 'D1', ts: '1.2' })
+    const revokedConn = await seedConnection()
+    const inactive = await seedEvent(revokedConn, { routed: true })
+    await api('POST', `/api/connections/${revokedConn}/revoke`)
+
+    const ids = async (q: string) => (await json(api('GET', `/api/events?${q}`))).items.map((e: any) => e.id).sort()
+    const facets = {
+      failed: [failedDelivery, failedAction],
+      pending: [unroutedYet, retrying],
+      unrouted: [unmatched, inactive],
+      echo: [echo],
+      ok: [ok],
+    }
+    for (const [outcome, expected] of Object.entries(facets)) expect(await ids(`outcome=${outcome}`)).toEqual([...expected].sort())
+    expect((await ids('')).length).toBe(Object.values(facets).flat().length)
+    expect(await ids(`outcome=failed&connectionId=${conn}`)).toEqual([failedDelivery, failedAction].sort())
+    expect((await api('GET', '/api/events?outcome=broken')).status).toBe(400)
+
+    const counts = await json(api('GET', '/api/events/facets'))
+    expect(counts).toEqual({ all: 8, failed: 2, pending: 2, unrouted: 2, echo: 1, ok: 1 })
+    expect(await json(api('GET', `/api/events/facets?connectionId=${conn}`))).toEqual({ all: 6, failed: 2, pending: 2, unrouted: 1, echo: 0, ok: 1 })
+    expect(await json(api('GET', '/api/events/facets?provider=slack'))).toEqual({ all: 1, failed: 0, pending: 0, unrouted: 0, echo: 1, ok: 0 })
+    expect((await api('GET', '/api/events/facets?since=nope')).status).toBe(400)
+  })
+
+  it('keeps keyset pagination correct under an outcome filter', async () => {
+    const conn = await seedConnection()
+    const dest = await seedDestination()
+    const route = await json(api('POST', '/api/routes', { name: 'r', eventType: '*', destinationIds: [dest] }))
+    const t = new Date('2026-01-01T00:00:00.000Z')
+    const failed: string[] = []
+    for (let i = 0; i < 9; i++) {
+      const id = await seedEvent(conn, { routed: true, receivedAt: new Date(t.getTime() + Math.floor(i / 3) * 1000) })
+      const status = i % 3 === 0 ? 'succeeded' : 'failed'
+      await h.db.insert(schema.deliveries).values({ eventId: id, routeId: route.id, destinationId: dest, status })
+      if (status === 'failed') failed.push(id)
+    }
+
+    const seen: string[] = []
+    let cursor: string | null = null
+    let pages = 0
+    do {
+      const page: any = await json(api('GET', `/api/events?outcome=failed&limit=4${cursor ? `&cursor=${cursor}` : ''}`))
+      seen.push(...page.items.map((e: any) => e.id))
+      cursor = page.nextCursor
+      pages++
+    } while (cursor)
+    expect(pages).toBe(2)
+    const expected = await h.db.execute<{ id: string }>(
+      sql`select id from events where id = any(${`{${failed.join(',')}}`}::uuid[]) order by received_at desc, id desc`,
+    )
+    expect(seen).toEqual(expected.map((r) => r.id))
+
+    const client = (h.db as unknown as { $client: { unsafe: (...args: unknown[]) => unknown } }).$client
+    const spy = vi.spyOn(client, 'unsafe')
+    try {
+      await api('GET', '/api/events?outcome=ok')
+      expect(spy.mock.calls.length).toBe(1)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('builds the event list page in one query', async () => {
     const conn = await seedConnection()
     const dest = await seedDestination()
