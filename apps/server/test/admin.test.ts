@@ -98,7 +98,9 @@ describe('admin access', () => {
 
   it('reports isAdmin in the session payload', async () => {
     const user = await signIn(h)
+    expect((await json(user.api('GET', '/api/session'))).body.adminExists).toBe(false)
     const admin = await signInAdmin()
+    expect((await json(user.api('GET', '/api/session'))).body.adminExists).toBe(true)
     expect((await json(user.api('GET', '/api/session'))).body.user).toMatchObject({ isAdmin: false })
     expect((await json(admin.api('GET', '/api/session'))).body.user).toMatchObject({ isAdmin: true })
   })

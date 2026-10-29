@@ -150,7 +150,7 @@ describe('console auth', () => {
     const { connection } = await h.connections.createWebhook({ name: 'Deploys', ownerUserId: me.userId })
     await h.connections.createWebhook({ name: 'Not mine', ownerUserId: null })
     const body = (await (await me.api('GET', '/api/session')).json()) as any
-    expect(body.user).toEqual({ id: me.userId, email: 'owner@example.com' })
+    expect(body.user).toEqual({ id: me.userId, email: 'owner@example.com', isAdmin: false })
     expect(body.signup).toBe('closed')
     expect(body.connections).toEqual([
       expect.objectContaining({ id: connection.id, name: 'Deploys', provider: 'webhook', status: 'active', role: 'owner' }),
