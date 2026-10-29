@@ -5,8 +5,10 @@ import { and, count, desc, eq, inArray, sql, type SQL } from 'drizzle-orm'
 import { Hono, type Context, type MiddlewareHandler } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { z } from 'zod'
+import { smsWebhookUrl } from '@relay/provider-sms'
 import {
   AdminError,
+  ConnectionOwnedError,
   createAgentDestination,
   createAgentDestinationInput,
   createDestination,
@@ -174,6 +176,12 @@ const previewBody = createRouteInput.omit({ name: true, destinationIds: true })
 
 const loginBody = z.object({ email: z.string().trim().toLowerCase().min(1).max(254), password: z.string().max(PASSWORD_MAX) })
 const webhookBody = z.object({ name: z.string().trim().min(1).max(100).optional() })
+const smsBody = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  accountSid: z.string().trim().regex(/^AC[0-9a-f]{32}$/i),
+  number: z.string().trim().regex(/^\+[1-9]\d{6,14}$/),
+  authToken: z.string().trim().min(8).max(200),
+})
 
 export function consoleApi(deps: ConsoleApiDeps) {
   const { db, queue, metrics } = deps
@@ -342,6 +350,29 @@ export function consoleApi(deps: ConsoleApiDeps) {
         createdAt: connection.createdAt,
         url: `${deps.publicUrl}/hooks/webhook/${connection.id}`,
         secret,
+      },
+      201,
+    )
+  })
+
+  api.post('/connections/sms', validated('json', smsBody), async (c) => {
+    const { name, ...input } = c.req.valid('json') as z.output<typeof smsBody>
+    let connection
+    try {
+      connection = await deps.connections.createSms({ ...input, ...(name ? { name } : {}), ownerUserId: c.var.userId })
+    } catch (err) {
+      if (err instanceof ConnectionOwnedError) return c.json({ error: 'number_already_connected' }, 409)
+      throw err
+    }
+    mutated('connection', 'create')
+    return c.json(
+      {
+        id: connection.id,
+        name: connection.name,
+        provider: connection.provider,
+        status: connection.status,
+        createdAt: connection.createdAt,
+        url: smsWebhookUrl(deps.publicUrl, connection.id),
       },
       201,
     )

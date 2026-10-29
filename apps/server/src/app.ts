@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { sql } from 'drizzle-orm'
 import { createActionExecutor, deriveReplyTokenKey, PROMETHEUS_CONTENT_TYPE, type Cipher, type ConnectionStore, type Db, type Queue } from '@relay/core'
 import { createSlackAdapter, createSlackRuntime } from '@relay/provider-slack'
+import { createSmsAdapter, createSmsRuntime } from '@relay/provider-sms'
 import { createWebhookAdapter, createWebhookRuntime } from '@relay/provider-webhook'
 import { actionsRoutes } from './actions'
 import { scryptHasher, type PasswordHasher } from './accounts/password'
@@ -16,7 +17,7 @@ import { slackOAuthRoutes } from './oauth'
 import { deriveStateKey } from './oauth-state'
 
 export interface AppDeps {
-  config: Pick<ServerConfig, 'PUBLIC_URL' | 'SLACK_SIGNING_SECRET' | 'SLACK_CLIENT_ID' | 'SLACK_CLIENT_SECRET' | 'SLACK_ALLOWED_USER_IDS' | 'RELAY_MASTER_KEY' | 'SIGNUP_MODE'> & Partial<Pick<ServerConfig, 'SLACK_API_BASE_URL'>>
+  config: Pick<ServerConfig, 'PUBLIC_URL' | 'SLACK_SIGNING_SECRET' | 'SLACK_CLIENT_ID' | 'SLACK_CLIENT_SECRET' | 'SLACK_ALLOWED_USER_IDS' | 'RELAY_MASTER_KEY' | 'SIGNUP_MODE'> & Partial<Pick<ServerConfig, 'SLACK_API_BASE_URL' | 'SMS_API_BASE_URL'>>
   db: Db
   queue: Queue
   connections: ConnectionStore
@@ -32,9 +33,11 @@ export function createApp(deps: AppDeps) {
   const clock = deps.nowSeconds ? { nowSeconds: deps.nowSeconds } : {}
   const slack = createSlackAdapter({ signingSecret: deps.config.SLACK_SIGNING_SECRET, connections: deps.connections, ...clock })
   const webhook = createWebhookAdapter({ connections: deps.connections, ...clock })
+  const sms = createSmsAdapter({ connections: deps.connections, publicUrl: deps.config.PUBLIC_URL })
   const runtimes = {
     slack: createSlackRuntime({ db: deps.db, ...(deps.config.SLACK_API_BASE_URL ? { apiBase: deps.config.SLACK_API_BASE_URL } : {}) }),
     webhook: createWebhookRuntime(),
+    sms: createSmsRuntime({ db: deps.db, ...(deps.config.SMS_API_BASE_URL ? { apiBase: deps.config.SMS_API_BASE_URL } : {}) }),
   }
   const execute = createActionExecutor({
     db: deps.db,
@@ -61,6 +64,7 @@ export function createApp(deps: AppDeps) {
     .get('/metrics', (c) => c.body(deps.metrics.registry.render(), 200, { 'content-type': PROMETHEUS_CONTENT_TYPE }))
     .post('/hooks/slack', ingressHandler(slack, ingressDeps))
     .post('/hooks/webhook/:connectionId', ingressHandler(webhook, ingressDeps))
+    .post('/hooks/sms/:connectionId', ingressHandler(sms, ingressDeps))
     .route(
       '/actions',
       actionsRoutes({

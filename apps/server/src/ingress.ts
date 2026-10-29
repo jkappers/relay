@@ -41,11 +41,16 @@ export function ingressHandler(adapter: ProviderAdapter, deps: IngressDeps) {
       }
 
       let payload: unknown
-      try {
-        payload = JSON.parse(rawBody)
-      } catch {
-        return finish('invalid_body', c.text('body must be JSON', 400))
+      if (adapter.bodyFormat === 'form') {
+        payload = Object.fromEntries(new URLSearchParams(rawBody))
+      } else {
+        try {
+          payload = JSON.parse(rawBody)
+        } catch {
+          return finish('invalid_body', c.text('body must be JSON', 400))
+        }
       }
+      const ok = () => adapter.ack?.() ?? c.body(null, 200)
       const input: IngressInput = { req, rawBody, payload }
 
       const handshake = adapter.handshake?.(input)
@@ -80,9 +85,9 @@ export function ingressHandler(adapter: ProviderAdapter, deps: IngressDeps) {
       if (result.status === 'duplicate') {
         if (result.requeued) deps.metrics.ingressRequeued.inc({ provider })
         if (provider === 'slack') c.header('X-Slack-No-Retry', '1')
-        return finish('duplicate', c.body(null, 200))
+        return finish('duplicate', ok())
       }
-      return finish('accepted', c.body(null, 200))
+      return finish('accepted', ok())
     } catch (err) {
       if (err instanceof InvalidPayloadError) return finish('invalid_body', c.text(err.message, 400))
       log.error('ingress error', { provider, err: err instanceof Error ? err.stack : String(err) })

@@ -22,6 +22,7 @@
     "@hono/zod-validator": "0.9.1",
     "@relay/core": "workspace:*",
     "@relay/provider-slack": "workspace:*",
+    "@relay/provider-sms": "workspace:*",
     "@relay/provider-webhook": "workspace:*",
     "drizzle-orm": "0.45.4",
     "hono": "4.13.13",
