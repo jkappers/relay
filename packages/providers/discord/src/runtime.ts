@@ -62,6 +62,67 @@ function retryAfterMs(res: Response, body: unknown): number | null {
   return res.headers.has('x-ratelimit-reset-after') && Number.isFinite(resetAfter) && resetAfter >= 0 ? Math.ceil(resetAfter * 1000) : null
 }
 
+export class DiscordApiError extends Error {
+  override name = 'DiscordApiError'
+}
+
+export interface DiscordGuildEntry {
+  id: string
+  name: string
+  owner: boolean
+  permissions: string
+}
+
+const GUILD_PAGE_LIMIT = 200
+const GUILD_MAX_PAGES = 10
+
+const guildEntry = z.looseObject({
+  id: snowflake,
+  name: z.string(),
+  owner: z.boolean().optional(),
+  permissions: z.string().regex(/^\d{1,20}$/).optional(),
+})
+
+/**
+ * GET /users/@me/guilds, all pages (limit 200, `after` the last id). The authorization header decides whose
+ * servers come back: `Bearer <user token>` (needs the guilds scope) or `Bot <token>`.
+ */
+export async function listGuilds(input: { authorization: string; apiBase?: string | undefined; fetch?: typeof fetch | undefined }): Promise<DiscordGuildEntry[]> {
+  const doFetch = input.fetch ?? fetch
+  const apiBase = (input.apiBase ?? DEFAULT_DISCORD_API_BASE_URL).replace(/\/+$/, '')
+  const out: DiscordGuildEntry[] = []
+  let after: string | null = null
+  for (let page = 0; page < GUILD_MAX_PAGES; page++) {
+    const qs = new URLSearchParams({ limit: String(GUILD_PAGE_LIMIT), ...(after ? { after } : {}) })
+    let res: Response
+    try {
+      res = await doFetch(`${apiBase}/users/@me/guilds?${qs}`, {
+        headers: { authorization: input.authorization, 'user-agent': DISCORD_USER_AGENT },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      })
+    } catch {
+      throw new DiscordApiError('users/@me/guilds request failed')
+    }
+    if (!res.ok) throw new DiscordApiError(`users/@me/guilds HTTP ${res.status}`)
+    const body: unknown = await res.json().catch(() => null)
+    if (!Array.isArray(body)) throw new DiscordApiError('users/@me/guilds returned an unexpected shape')
+    for (const raw of body) {
+      const g = guildEntry.safeParse(raw)
+      if (g.success) out.push({ id: g.data.id, name: g.data.name, owner: g.data.owner === true, permissions: g.data.permissions ?? '0' })
+    }
+    const last = body.at(-1) as { id?: unknown } | undefined
+    if (body.length < GUILD_PAGE_LIMIT || typeof last?.id !== 'string') return out
+    after = last.id
+  }
+  return out
+}
+
+/** The ids of the servers the bot is in. */
+export async function listBotGuildIds(input: { botToken: string; apiBase?: string | undefined; fetch?: typeof fetch | undefined }): Promise<Set<string>> {
+  const guilds = await listGuilds({ authorization: `Bot ${input.botToken}`, apiBase: input.apiBase, fetch: input.fetch })
+  return new Set(guilds.map((g) => g.id))
+}
+
 export function createDiscordRuntime(deps: DiscordRuntimeDeps): ProviderRuntime {
   const apiBase = (deps.apiBase ?? DEFAULT_DISCORD_API_BASE_URL).replace(/\/+$/, '')
   let botUser: { token: string; id: Promise<string | null> } | null = null
