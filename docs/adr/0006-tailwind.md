@@ -34,4 +34,4 @@ The CSP stays `default-src 'self'; script-src 'self'; style-src 'self'`, with `f
 - Tailwind runs at build time and emits a static stylesheet served from `'self'`. No runtime style injection.
 - `style={...}` attributes are banned. `scripts/check.sh` greps for them next to the `innerHTML` ban. Dynamic geometry, such as the patch cords on the Routes page, uses SVG attributes (`d`, `viewBox`), not inline styles.
 - The theme choice is applied by the bundled script, not an inline script. With a saved Light or Dark choice that differs from the system setting, the page background can show the system theme for the moment between first paint and the bundle running. The app root is empty during that moment, so no content flashes.
-- The font (Atkinson Hyperlegible Next, SIL OFL 1.1) is self-hosted under `apps/console/public/fonts/` with its license. `default-src 'self'` already covers it.
+- The font (Inter, variable, Latin subset, SIL OFL 1.1) is self-hosted under `apps/console/public/fonts/` with its license. `default-src 'self'` already covers it.

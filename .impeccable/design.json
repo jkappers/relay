@@ -1,183 +1,248 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-25T23:06:10+00:00",
+  "generatedAt": "2026-10-25T23:45:00+00:00",
   "title": "Design System: Relay",
   "extensions": {
     "colorMeta": {
       "ground": {
         "role": "neutral",
-        "displayName": "Enamel",
-        "canonical": "#e6ebe7",
+        "displayName": "Ground",
+        "canonical": "#fcfcfd",
+        "oklch": "oklch(99.1% 0.001 286.4)",
         "cssVar": "--ground",
         "theme": "light",
         "tonalRamp": [
-          "#090c0a",
-          "#222623",
-          "#3f4340",
-          "#5e625f",
-          "#7f8480",
-          "#a2a6a3",
-          "#c6cbc7",
-          "#ebf0ec"
+          "#0b0b0c",
+          "#252526",
+          "#424243",
+          "#616162",
+          "#828283",
+          "#a5a5a6",
+          "#c9c9ca",
+          "#eeeeef"
         ]
       },
       "rail": {
         "role": "neutral",
-        "displayName": "Frame Rail",
-        "canonical": "#d5ddd7",
+        "displayName": "Rail",
+        "canonical": "#f5f6f8",
+        "oklch": "oklch(97.3% 0.003 264.5)",
         "cssVar": "--rail",
         "theme": "light",
         "tonalRamp": [
-          "#080d09",
-          "#212722",
-          "#3d443f",
-          "#5c635e",
-          "#7d847f",
-          "#a0a7a2",
-          "#c4cbc6",
-          "#e9f1eb"
+          "#0b0b0c",
+          "#242526",
+          "#414243",
+          "#606163",
+          "#818284",
+          "#a4a5a7",
+          "#c8c9cb",
+          "#edeef0"
         ]
       },
       "raised": {
         "role": "neutral",
-        "displayName": "Raised Plate",
-        "canonical": "#f4f7f5",
+        "displayName": "Raised",
+        "canonical": "#ffffff",
+        "oklch": "oklch(100.0% 0.000 89.9)",
         "cssVar": "--raised",
         "theme": "light",
         "tonalRamp": [
-          "#0a0c0a",
-          "#232624",
-          "#404341",
-          "#5f6260",
-          "#808381",
-          "#a3a6a4",
-          "#c7cac8",
-          "#ecefed"
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "hover": {
+        "role": "neutral",
+        "displayName": "Hover Fill",
+        "canonical": "#f1f2f5",
+        "oklch": "oklch(96.1% 0.004 271.4)",
+        "cssVar": "--hover",
+        "theme": "light",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#242527",
+          "#414244",
+          "#606164",
+          "#818285",
+          "#a4a5a8",
+          "#c8c9cc",
+          "#edeef1"
+        ]
+      },
+      "sel": {
+        "role": "neutral",
+        "displayName": "Selection Fill",
+        "canonical": "#eef2fd",
+        "oklch": "oklch(96.1% 0.015 270.0)",
+        "cssVar": "--sel",
+        "theme": "light",
+        "tonalRamp": [
+          "#090b12",
+          "#22252d",
+          "#3f424a",
+          "#5e616a",
+          "#7f828c",
+          "#a1a5af",
+          "#c5c9d3",
+          "#eaeef9"
         ]
       },
       "ink": {
         "role": "neutral",
         "displayName": "Ink",
-        "canonical": "#141c18",
+        "canonical": "#16181d",
+        "oklch": "oklch(20.9% 0.010 268.2)",
         "cssVar": "--ink",
         "theme": "light",
         "tonalRamp": [
-          "#060d09",
-          "#1f2723",
-          "#3b4440",
-          "#5a645f",
-          "#7b8580",
-          "#9ea8a2",
-          "#c1ccc6",
-          "#e6f2ec"
+          "#090b10",
+          "#23252a",
+          "#404248",
+          "#5f6167",
+          "#808289",
+          "#a2a5ac",
+          "#c6c9d0",
+          "#ebeef6"
         ]
       },
       "ink-2": {
         "role": "neutral",
         "displayName": "Ink 2",
-        "canonical": "#3e4a44",
+        "canonical": "#4a505b",
+        "oklch": "oklch(43.0% 0.020 262.7)",
         "cssVar": "--ink-2",
         "theme": "light",
         "tonalRamp": [
-          "#050e09",
-          "#1d2823",
-          "#39453f",
-          "#58655e",
-          "#79867f",
-          "#9ba9a2",
-          "#bfcdc6",
-          "#e4f3eb"
+          "#070b14",
+          "#20252f",
+          "#3c424d",
+          "#5b616d",
+          "#7c838f",
+          "#9ea5b2",
+          "#c2c9d6",
+          "#e7effc"
         ]
       },
       "ink-3": {
         "role": "neutral",
         "displayName": "Ink 3",
-        "canonical": "#55625b",
+        "canonical": "#646a76",
+        "oklch": "oklch(52.3% 0.020 264.4)",
         "cssVar": "--ink-3",
         "theme": "light",
         "tonalRamp": [
-          "#040e09",
-          "#1d2822",
-          "#39453f",
-          "#58655e",
-          "#78867f",
-          "#9ba9a1",
-          "#bfcdc5",
-          "#e4f3ea"
+          "#070b14",
+          "#20252f",
+          "#3d424d",
+          "#5b616d",
+          "#7c828f",
+          "#9fa5b2",
+          "#c3c9d7",
+          "#e8effd"
         ]
       },
       "rule": {
         "role": "neutral",
         "displayName": "Hairline",
-        "canonical": "#c4cdc7",
+        "canonical": "#e8e9ed",
+        "oklch": "oklch(93.4% 0.005 275.0)",
         "cssVar": "--rule",
         "theme": "light",
         "tonalRamp": [
-          "#070d09",
-          "#202723",
-          "#3d443f",
-          "#5c645e",
-          "#7c857f",
-          "#9fa8a2",
-          "#c3ccc6",
-          "#e8f1eb"
+          "#0a0b0e",
+          "#242528",
+          "#414245",
+          "#606164",
+          "#818286",
+          "#a4a5a8",
+          "#c8c9cd",
+          "#edeef2"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Line",
+        "canonical": "#d7dae0",
+        "oklch": "oklch(88.8% 0.009 264.5)",
+        "cssVar": "--line",
+        "theme": "light",
+        "tonalRamp": [
+          "#090b0f",
+          "#232529",
+          "#404247",
+          "#5f6166",
+          "#808288",
+          "#a2a5ab",
+          "#c6c9cf",
+          "#ebeef5"
         ]
       },
       "edge": {
         "role": "neutral",
         "displayName": "Edge",
-        "canonical": "#6c7771",
+        "canonical": "#858b96",
+        "oklch": "oklch(63.5% 0.018 262.7)",
         "cssVar": "--edge",
         "theme": "light",
         "tonalRamp": [
-          "#060d09",
-          "#1e2823",
-          "#3b453f",
-          "#5a645e",
-          "#7a857f",
-          "#9da8a2",
-          "#c0cdc6",
-          "#e6f2eb"
+          "#070b13",
+          "#20252e",
+          "#3d424c",
+          "#5c616c",
+          "#7d838d",
+          "#9fa5b1",
+          "#c3c9d5",
+          "#e8effb"
         ]
       },
       "accent": {
         "role": "primary",
         "displayName": "Exchange Blue",
         "canonical": "#1d4ed8",
+        "oklch": "oklch(48.8% 0.217 264.4)",
         "cssVar": "--accent",
         "theme": "light",
         "tonalRamp": [
-          "#0f005f",
-          "#030084",
-          "#072da9",
-          "#2453d0",
-          "#4378f8",
-          "#649dff",
-          "#86c3ff",
-          "#aae9ff"
+          "#000134",
+          "#010479",
+          "#0326b2",
+          "#1e50da",
+          "#4177fc",
+          "#79a2fb",
+          "#b0c9fd",
+          "#e7effe"
         ]
       },
       "accent-hover": {
         "role": "primary",
-        "displayName": "Exchange Blue Pressed",
+        "displayName": "Exchange Blue Hover",
         "canonical": "#1a40b0",
+        "oklch": "oklch(42.4% 0.183 264.8)",
         "cssVar": "--accent-hover",
         "theme": "light",
         "tonalRamp": [
-          "#0c0057",
-          "#02007c",
+          "#000036",
+          "#020677",
           "#0f31a1",
           "#2c56c7",
           "#4a7aee",
-          "#6b9eff",
-          "#8ec4ff",
-          "#b1eaff"
+          "#79a2fe",
+          "#afc9ff",
+          "#e7efff"
         ]
       },
       "accent-ink": {
         "role": "primary",
         "displayName": "Ink on Blue",
         "canonical": "#ffffff",
+        "oklch": "oklch(100.0% 0.000 89.9)",
         "cssVar": "--accent-ink",
         "theme": "light",
         "tonalRamp": [
@@ -194,126 +259,134 @@
       "accent-wash": {
         "role": "primary",
         "displayName": "Blue Wash",
-        "canonical": "#d3ddf3",
+        "canonical": "#e3e9fb",
+        "oklch": "oklch(93.5% 0.025 271.1)",
         "cssVar": "--accent-wash",
         "theme": "light",
         "tonalRamp": [
-          "#060a19",
-          "#1e2535",
-          "#3a4253",
-          "#596174",
-          "#798296",
-          "#9ca5ba",
-          "#bfc9df",
-          "#e4efff"
+          "#070a16",
+          "#202432",
+          "#3d4150",
+          "#5c6170",
+          "#7d8292",
+          "#9fa5b5",
+          "#c3c9da",
+          "#e9eefe"
         ]
       },
       "ok": {
         "role": "tertiary",
         "displayName": "Lamp Green",
-        "canonical": "#1c7a3e",
+        "canonical": "#1b8040",
+        "oklch": "oklch(52.9% 0.133 150.5)",
         "cssVar": "--ok",
         "theme": "light",
         "tonalRamp": [
-          "#001600",
-          "#003300",
-          "#005319",
-          "#137439",
-          "#3f9759",
-          "#64bb7b",
-          "#89e19e",
-          "#aeffc3"
+          "#001003",
+          "#002e11",
+          "#015022",
+          "#047536",
+          "#3a9856",
+          "#60bc78",
+          "#85e29b",
+          "#c9fed3"
         ]
       },
       "warn": {
         "role": "tertiary",
         "displayName": "Lamp Amber",
-        "canonical": "#a86200",
+        "canonical": "#b26a00",
+        "oklch": "oklch(59.1% 0.132 65.1)",
         "cssVar": "--warn",
         "theme": "light",
         "tonalRamp": [
-          "#2a0000",
-          "#4b0800",
-          "#6e2c00",
-          "#924d00",
-          "#b66f1c",
-          "#dc9247",
-          "#ffb76c",
-          "#ffdc91"
+          "#150800",
+          "#381e01",
+          "#603702",
+          "#8a5206",
+          "#b76f0d",
+          "#dd9240",
+          "#ffb972",
+          "#ffebd8"
         ]
       },
       "bad": {
         "role": "tertiary",
         "displayName": "Lamp Red",
-        "canonical": "#c0262d",
+        "canonical": "#d0313a",
+        "oklch": "oklch(56.6% 0.195 23.4)",
         "cssVar": "--bad",
         "theme": "light",
         "tonalRamp": [
-          "#3d0000",
-          "#640000",
-          "#8c0000",
-          "#b41523",
-          "#dd4545",
-          "#ff6b67",
-          "#ff9189",
-          "#ffb7ad"
+          "#1e0002",
+          "#4c0109",
+          "#7f0316",
+          "#b60a25",
+          "#df4146",
+          "#fc7471",
+          "#ffb2ad",
+          "#fee9e7"
         ]
       },
       "ok-ink": {
         "role": "tertiary",
         "displayName": "Green Ink",
-        "canonical": "#17653a",
+        "canonical": "#16703a",
+        "oklch": "oklch(48.1% 0.118 151.6)",
         "cssVar": "--ok-ink",
         "theme": "light",
         "tonalRamp": [
-          "#001500",
-          "#00320a",
-          "#005127",
-          "#277246",
-          "#4c9466",
-          "#6fb888",
-          "#93ddab",
-          "#b8ffd0"
+          "#001004",
+          "#022e13",
+          "#075026",
+          "#1b733d",
+          "#44965e",
+          "#68ba7f",
+          "#8ddfa2",
+          "#c8fed5"
         ]
       },
       "warn-ink": {
         "role": "tertiary",
         "displayName": "Amber Ink",
-        "canonical": "#8a5000",
+        "canonical": "#8f5200",
+        "oklch": "oklch(49.9% 0.114 63.3)",
         "cssVar": "--warn-ink",
         "theme": "light",
         "tonalRamp": [
-          "#260000",
-          "#471100",
-          "#683100",
-          "#8b5103",
-          "#b07333",
-          "#d59657",
-          "#fcba7b",
-          "#ffdf9f"
+          "#150700",
+          "#381e01",
+          "#603604",
+          "#8b510b",
+          "#b17230",
+          "#d79555",
+          "#feb979",
+          "#feebd9"
         ]
       },
       "bad-ink": {
         "role": "tertiary",
         "displayName": "Red Ink",
-        "canonical": "#a3161d",
+        "canonical": "#b8222b",
+        "oklch": "oklch(50.9% 0.184 24.3)",
         "cssVar": "--bad-ink",
         "theme": "light",
         "tonalRamp": [
-          "#390000",
-          "#600000",
-          "#870000",
-          "#ae2527",
-          "#d64d48",
-          "#ff726a",
-          "#ff978d",
-          "#ffbdb1"
+          "#1e0001",
+          "#4c0108",
+          "#7f0414",
+          "#b21a26",
+          "#db4748",
+          "#fc7570",
+          "#ffb3ac",
+          "#fee9e7"
         ]
       },
       "bad-ink-on": {
         "role": "tertiary",
         "displayName": "Ink on Red",
         "canonical": "#ffffff",
+        "oklch": "oklch(100.0% 0.000 89.9)",
         "cssVar": "--bad-ink-on",
         "theme": "light",
         "tonalRamp": [
@@ -330,389 +403,456 @@
       "skeleton": {
         "role": "neutral",
         "displayName": "Skeleton",
-        "canonical": "#d5ddd7",
+        "canonical": "#eceef1",
+        "oklch": "oklch(94.8% 0.005 258.3)",
         "cssVar": "--skeleton",
         "theme": "light",
         "tonalRamp": [
-          "#080d09",
-          "#212722",
-          "#3d443f",
-          "#5c635e",
-          "#7d847f",
-          "#a0a7a2",
-          "#c4cbc6",
-          "#e9f1eb"
+          "#0a0b0d",
+          "#242527",
+          "#404244",
+          "#606164",
+          "#818285",
+          "#a3a5a8",
+          "#c7c9cc",
+          "#edeff2"
         ]
       },
       "ground-dark": {
         "role": "neutral",
-        "displayName": "Enamel (dark)",
-        "canonical": "#121614",
+        "displayName": "Ground (dark)",
+        "canonical": "#0e0f12",
+        "oklch": "oklch(16.9% 0.006 271.0)",
         "cssVar": "--ground",
         "theme": "dark",
         "tonalRamp": [
-          "#080c0a",
-          "#222624",
-          "#3f4341",
-          "#5e6360",
-          "#7e8481",
-          "#a1a6a4",
-          "#c5cbc8",
-          "#eaf0ed"
+          "#0a0b0e",
+          "#242528",
+          "#414246",
+          "#606165",
+          "#818286",
+          "#a3a5a9",
+          "#c7c9cd",
+          "#edeef3"
         ]
       },
       "rail-dark": {
         "role": "neutral",
-        "displayName": "Frame Rail (dark)",
-        "canonical": "#0a0c0b",
+        "displayName": "Rail (dark)",
+        "canonical": "#0a0b0d",
+        "oklch": "oklch(14.9% 0.005 264.5)",
         "cssVar": "--rail",
         "theme": "dark",
         "tonalRamp": [
-          "#0a0c0b",
-          "#232624",
-          "#404341",
-          "#5f6261",
-          "#808382",
-          "#a3a6a4",
-          "#c7cac8",
-          "#ecefee"
+          "#0a0b0d",
+          "#242527",
+          "#414244",
+          "#606164",
+          "#818285",
+          "#a3a5a8",
+          "#c7c9cc",
+          "#edeef2"
         ]
       },
       "raised-dark": {
         "role": "neutral",
-        "displayName": "Raised Plate (dark)",
-        "canonical": "#1a1f1c",
+        "displayName": "Raised (dark)",
+        "canonical": "#16181c",
+        "oklch": "oklch(20.9% 0.009 264.4)",
         "cssVar": "--raised",
         "theme": "dark",
         "tonalRamp": [
-          "#080c0a",
-          "#212623",
-          "#3e4440",
-          "#5d635f",
-          "#7e8480",
-          "#a0a7a3",
-          "#c4cbc7",
-          "#e9f0ec"
+          "#090b0f",
+          "#232529",
+          "#404247",
+          "#5f6166",
+          "#808288",
+          "#a2a5aa",
+          "#c6c9cf",
+          "#eceef4"
+        ]
+      },
+      "hover-dark": {
+        "role": "neutral",
+        "displayName": "Hover Fill (dark)",
+        "canonical": "#1c1e23",
+        "oklch": "oklch(23.5% 0.010 268.3)",
+        "cssVar": "--hover",
+        "theme": "dark",
+        "tonalRamp": [
+          "#090b10",
+          "#23252a",
+          "#404248",
+          "#5f6167",
+          "#808289",
+          "#a2a5ac",
+          "#c6c9d0",
+          "#ebeef5"
+        ]
+      },
+      "sel-dark": {
+        "role": "neutral",
+        "displayName": "Selection Fill (dark)",
+        "canonical": "#161d2e",
+        "oklch": "oklch(23.3% 0.035 266.6)",
+        "cssVar": "--sel",
+        "theme": "dark",
+        "tonalRamp": [
+          "#050a1a",
+          "#1d2536",
+          "#394255",
+          "#586176",
+          "#798298",
+          "#9ba5bc",
+          "#bfc9e1",
+          "#e7efff"
         ]
       },
       "ink-dark": {
         "role": "neutral",
         "displayName": "Ink (dark)",
-        "canonical": "#e3e9e5",
+        "canonical": "#e6e8ec",
+        "oklch": "oklch(93.1% 0.006 264.5)",
         "cssVar": "--ink",
         "theme": "dark",
         "tonalRamp": [
-          "#080c0a",
-          "#222623",
-          "#3f4340",
-          "#5e635f",
-          "#7e8480",
-          "#a1a7a3",
-          "#c5cbc7",
-          "#eaf0ec"
+          "#0a0b0e",
+          "#242528",
+          "#404245",
+          "#5f6165",
+          "#808286",
+          "#a3a5a9",
+          "#c7c9cd",
+          "#eceef2"
         ]
       },
       "ink-2-dark": {
         "role": "neutral",
         "displayName": "Ink 2 (dark)",
-        "canonical": "#b0bab4",
+        "canonical": "#a9aeb8",
+        "oklch": "oklch(75.0% 0.015 264.5)",
         "cssVar": "--ink-2",
         "theme": "dark",
         "tonalRamp": [
-          "#060d09",
-          "#1f2723",
-          "#3c443f",
-          "#5b645e",
-          "#7c857f",
-          "#9ea8a2",
-          "#c2ccc6",
-          "#e7f1eb"
+          "#080b12",
+          "#21252d",
+          "#3e424a",
+          "#5d616a",
+          "#7e828c",
+          "#a0a5af",
+          "#c4c9d4",
+          "#e9eff9"
         ]
       },
       "ink-3-dark": {
         "role": "neutral",
         "displayName": "Ink 3 (dark)",
-        "canonical": "#8f9b94",
+        "canonical": "#8a909b",
+        "oklch": "oklch(65.2% 0.018 262.7)",
         "cssVar": "--ink-3",
         "theme": "dark",
         "tonalRamp": [
-          "#050d09",
-          "#1e2822",
-          "#3a453f",
-          "#59645e",
-          "#7a867f",
-          "#9ca9a1",
-          "#c0cdc5",
-          "#e5f2eb"
+          "#070b13",
+          "#20252e",
+          "#3d424c",
+          "#5c616c",
+          "#7d838d",
+          "#9fa5b1",
+          "#c3c9d5",
+          "#e8effb"
         ]
       },
       "rule-dark": {
         "role": "neutral",
         "displayName": "Hairline (dark)",
-        "canonical": "#262c29",
+        "canonical": "#22252a",
+        "oklch": "oklch(26.4% 0.010 260.7)",
         "cssVar": "--rule",
         "theme": "dark",
         "tonalRamp": [
-          "#070d0a",
-          "#212724",
-          "#3d4440",
-          "#5c6360",
-          "#7d8481",
-          "#a0a7a3",
-          "#c4cbc7",
-          "#e9f1ed"
+          "#090b10",
+          "#22252a",
+          "#3f4248",
+          "#5e6167",
+          "#7f8289",
+          "#a1a5ac",
+          "#c5c9d0",
+          "#ebeff6"
+        ]
+      },
+      "line-dark": {
+        "role": "neutral",
+        "displayName": "Line (dark)",
+        "canonical": "#30333a",
+        "oklch": "oklch(32.1% 0.013 267.1)",
+        "cssVar": "--line",
+        "theme": "dark",
+        "tonalRamp": [
+          "#090b11",
+          "#22252c",
+          "#3f4249",
+          "#5e6169",
+          "#7f828a",
+          "#a1a5ae",
+          "#c5c9d2",
+          "#eaeef8"
         ]
       },
       "edge-dark": {
         "role": "neutral",
         "displayName": "Edge (dark)",
-        "canonical": "#6b7670",
+        "canonical": "#646a75",
+        "oklch": "oklch(52.3% 0.019 262.7)",
         "cssVar": "--edge",
         "theme": "dark",
         "tonalRamp": [
-          "#060d09",
-          "#1e2823",
-          "#3b453f",
-          "#5a645e",
-          "#7a857f",
-          "#9da8a2",
-          "#c0cdc6",
-          "#e6f2eb"
+          "#070b13",
+          "#20252e",
+          "#3d424c",
+          "#5c616c",
+          "#7c838e",
+          "#9fa5b1",
+          "#c3c9d6",
+          "#e8effc"
         ]
       },
       "accent-dark": {
         "role": "primary",
         "displayName": "Exchange Blue (dark)",
         "canonical": "#7aa2ff",
+        "oklch": "oklch(72.3% 0.143 265.4)",
         "cssVar": "--accent",
         "theme": "dark",
         "tonalRamp": [
-          "#040046",
+          "#010134",
           "#051669",
           "#1c398c",
           "#395bb1",
           "#587ed7",
           "#79a1fe",
-          "#9cc6ff",
-          "#c0ecff"
+          "#b1c9fc",
+          "#e7effe"
         ]
       },
       "accent-hover-dark": {
         "role": "primary",
-        "displayName": "Exchange Blue Pressed (dark)",
+        "displayName": "Exchange Blue Hover (dark)",
         "canonical": "#9ab8ff",
+        "oklch": "oklch(78.7% 0.107 266.4)",
         "cssVar": "--accent-hover",
         "theme": "dark",
         "tonalRamp": [
-          "#010037",
+          "#010035",
           "#0d1e58",
           "#273d7a",
           "#455e9e",
           "#6580c3",
           "#86a3e9",
-          "#a9c8ff",
-          "#cdedff"
+          "#b2c9fd",
+          "#e7efff"
         ]
       },
       "accent-ink-dark": {
         "role": "primary",
         "displayName": "Ink on Blue (dark)",
-        "canonical": "#0a0c0b",
+        "canonical": "#0a0b0d",
+        "oklch": "oklch(14.9% 0.005 264.5)",
         "cssVar": "--accent-ink",
         "theme": "dark",
         "tonalRamp": [
-          "#0a0c0b",
-          "#232624",
-          "#404341",
-          "#5f6261",
-          "#808382",
-          "#a3a6a4",
-          "#c7cac8",
-          "#ecefee"
+          "#0a0b0d",
+          "#242527",
+          "#414244",
+          "#606164",
+          "#818285",
+          "#a3a5a8",
+          "#c7c9cc",
+          "#edeef2"
         ]
       },
       "accent-wash-dark": {
         "role": "primary",
         "displayName": "Blue Wash (dark)",
-        "canonical": "#1b2847",
+        "canonical": "#1a2747",
+        "oklch": "oklch(27.9% 0.062 265.9)",
         "cssVar": "--accent-wash",
         "theme": "dark",
         "tonalRamp": [
-          "#020824",
-          "#172342",
-          "#334162",
-          "#516184",
-          "#7182a7",
-          "#93a5cc",
-          "#b7c9f1",
-          "#dbefff"
+          "#020825",
+          "#172343",
+          "#324163",
+          "#516185",
+          "#7182a8",
+          "#93a5cd",
+          "#b6c9f3",
+          "#e7efff"
         ]
       },
       "ok-dark": {
         "role": "tertiary",
         "displayName": "Lamp Green (dark)",
-        "canonical": "#4cc272",
+        "canonical": "#45c06c",
+        "oklch": "oklch(71.9% 0.163 150.5)",
         "cssVar": "--ok",
         "theme": "dark",
         "tonalRamp": [
-          "#001700",
-          "#003600",
-          "#005605",
-          "#00782c",
-          "#169c4e",
-          "#4ac070",
-          "#72e693",
-          "#99ffb8"
+          "#001003",
+          "#002e11",
+          "#015023",
+          "#047536",
+          "#0a9c4a",
+          "#46c16d",
+          "#6fe690",
+          "#c9fed3"
         ]
       },
       "warn-dark": {
         "role": "tertiary",
         "displayName": "Lamp Amber (dark)",
-        "canonical": "#f0a63a",
+        "canonical": "#eda23a",
+        "oklch": "oklch(76.9% 0.145 70.7)",
         "cssVar": "--warn",
         "theme": "dark",
         "tonalRamp": [
-          "#2a0000",
-          "#4c0800",
-          "#6e2d00",
-          "#924e00",
-          "#b77000",
-          "#dc941f",
-          "#ffb850",
-          "#ffde78"
+          "#140800",
+          "#361f00",
+          "#5c3a05",
+          "#865500",
+          "#b37202",
+          "#dd9326",
+          "#ffba63",
+          "#ffebd5"
         ]
       },
       "bad-dark": {
         "role": "tertiary",
         "displayName": "Lamp Red (dark)",
         "canonical": "#ff6b66",
+        "oklch": "oklch(71.1% 0.182 24.8)",
         "cssVar": "--bad",
         "theme": "dark",
         "tonalRamp": [
-          "#3b0000",
-          "#620000",
-          "#8a0000",
+          "#1f0001",
+          "#4c0208",
+          "#7f0714",
           "#b11d26",
           "#da4947",
-          "#ff6f69",
-          "#ff948c",
-          "#ffbab0"
+          "#ff726d",
+          "#feb3ac",
+          "#ffe9e6"
         ]
       },
       "ok-ink-dark": {
         "role": "tertiary",
         "displayName": "Green Ink (dark)",
         "canonical": "#6fd38f",
+        "oklch": "oklch(78.8% 0.136 152.5)",
         "cssVar": "--ok-ink",
         "theme": "dark",
         "tonalRamp": [
-          "#001700",
-          "#003500",
-          "#005518",
-          "#007638",
+          "#001004",
+          "#022e14",
+          "#065028",
+          "#0f743d",
           "#309959",
           "#59bd7b",
           "#7fe39e",
-          "#a4ffc2"
+          "#c8fed6"
         ]
       },
       "warn-ink-dark": {
         "role": "tertiary",
         "displayName": "Amber Ink (dark)",
         "canonical": "#f3b55c",
+        "oklch": "oklch(81.4% 0.128 74.1)",
         "cssVar": "--warn-ink",
         "theme": "dark",
         "tonalRamp": [
-          "#260000",
-          "#471200",
-          "#683200",
-          "#8b5300",
+          "#130900",
+          "#352000",
+          "#5a3b06",
+          "#845701",
           "#af7503",
           "#d4983c",
           "#fabc63",
-          "#ffe289"
+          "#ffebd2"
         ]
       },
       "bad-ink-dark": {
         "role": "tertiary",
         "displayName": "Red Ink (dark)",
         "canonical": "#ff8a85",
+        "oklch": "oklch(76.0% 0.143 23.5)",
         "cssVar": "--bad-ink",
         "theme": "dark",
         "tonalRamp": [
-          "#320000",
-          "#570000",
+          "#1e0002",
+          "#4c0109",
           "#7d0e19",
           "#a33738",
           "#ca5a58",
           "#f17e79",
-          "#ffa29c",
-          "#ffc7c0"
+          "#ffb2ad",
+          "#fee9e7"
         ]
       },
       "bad-ink-on-dark": {
         "role": "tertiary",
         "displayName": "Ink on Red (dark)",
-        "canonical": "#0a0c0b",
+        "canonical": "#0a0b0d",
+        "oklch": "oklch(14.9% 0.005 264.5)",
         "cssVar": "--bad-ink-on",
         "theme": "dark",
         "tonalRamp": [
-          "#0a0c0b",
-          "#232624",
-          "#404341",
-          "#5f6261",
-          "#808382",
-          "#a3a6a4",
-          "#c7cac8",
-          "#ecefee"
+          "#0a0b0d",
+          "#242527",
+          "#414244",
+          "#606164",
+          "#818285",
+          "#a3a5a8",
+          "#c7c9cc",
+          "#edeef2"
         ]
       },
       "skeleton-dark": {
         "role": "neutral",
         "displayName": "Skeleton (dark)",
-        "canonical": "#222825",
+        "canonical": "#1f2227",
+        "oklch": "oklch(25.1% 0.010 260.7)",
         "cssVar": "--skeleton",
         "theme": "dark",
         "tonalRamp": [
-          "#070d0a",
-          "#212724",
-          "#3d4440",
-          "#5c6360",
-          "#7d8481",
-          "#a0a7a3",
-          "#c3cbc7",
-          "#e9f1ed"
+          "#090b10",
+          "#22252a",
+          "#3f4248",
+          "#5e6167",
+          "#7f8289",
+          "#a1a5ac",
+          "#c5c9d0",
+          "#eaeff6"
         ]
       }
     },
     "typographyMeta": {
-      "headline": {
-        "displayName": "Headline",
-        "purpose": "The one page title (h1) in each page header."
-      },
       "title": {
         "displayName": "Title",
-        "purpose": "Section heads (h2) above a hairline."
+        "purpose": "The one page title (h1), with a 12px ink-3 meta line beside it."
       },
       "body": {
         "displayName": "Body",
-        "purpose": "Default text, tabular numerals."
-      },
-      "body-sm": {
-        "displayName": "Body small",
-        "purpose": "Table cells, buttons, inputs, nav, metadata, outcome text."
+        "purpose": "The 13px UI base: table cells, buttons, inputs, nav, panel facts, notices."
       },
       "label": {
         "displayName": "Label",
-        "purpose": "Form labels, call-log column header, small buttons."
+        "purpose": "12px column headers, form labels, section heads (600), small buttons, hints, ages, key hints."
       },
       "mono": {
         "displayName": "Mono",
-        "purpose": "Event types, IDs, payload JSON, route filters. Renders at 0.92em of its context."
+        "purpose": "Event types, IDs, payloads, condensed failure causes, type-prefix filter, panel title."
       },
       "jack-code": {
         "displayName": "Jack code",
-        "purpose": "Uppercase short codes inside jacks. Not a theme token in the build (arbitrary 11px value)."
+        "purpose": "10px uppercase short codes inside jacks. Set in the .jack-code component class, not a theme text step."
       }
     },
     "themes": {
@@ -723,24 +863,34 @@
     "shadows": [
       {
         "name": "panel",
-        "value": "0 6px 16px -8px rgb(10 12 11 / 0.35)",
-        "purpose": "Open forms and the one-time secret box only."
+        "value": "0 8px 24px -12px rgb(10 11 13 / 0.3)",
+        "purpose": "Slide-over panel, open forms, secret box, sign-in form, inline Replay confirm."
+      },
+      {
+        "name": "segment-lift",
+        "value": "0 0 0 1px var(--line), 0 1px 2px rgb(10 11 13 / 0.08)",
+        "purpose": "Checked option in a segmented control only."
       }
     ],
     "motion": [
       {
         "name": "ease-settle",
         "value": "cubic-bezier(0.16, 1, 0.3, 1)",
-        "purpose": "Easing for lamp settle and button hover."
+        "purpose": "Easing for lamp settle and panel slide."
       },
       {
         "name": "settle",
-        "value": "settle 180ms var(--ease-settle) both; from opacity 0.25 scale 0.55 to opacity 1 scale 1",
-        "purpose": "Lamp appears or changes state. Trace lamps stagger 30ms per stage."
+        "value": "settle 180ms var(--ease-settle) both; from opacity 0.25 scale 0.55",
+        "purpose": "Lamp appears or changes state. Panel trace lamps stagger 30ms per stage."
+      },
+      {
+        "name": "slide",
+        "value": "slide 150ms var(--ease-settle) both; from opacity 0 translateX(1rem)",
+        "purpose": "Detail panel opens."
       },
       {
         "name": "hover",
-        "value": "background-color 120ms, border-color 120ms on ease-settle",
+        "value": "background-color, border-color, color 100ms",
         "purpose": "Button hover."
       },
       {
@@ -751,28 +901,50 @@
     ],
     "focus": {
       "value": "outline: 2px solid var(--accent); outline-offset: 2px",
-      "inputs": "outline-offset: 0; border-color: var(--accent)"
+      "inputs": "outline-offset: 0; border-color: var(--accent)",
+      "rows": "outline: 2px solid var(--accent); outline-offset: -2px on the row when its link has focus"
+    },
+    "keyboard": {
+      "/": "Focus the type-prefix filter",
+      "j / ArrowDown": "Next row (moves the open panel too)",
+      "k / ArrowUp": "Previous row",
+      "Enter": "Open the focused row in the panel",
+      "Esc": "Close the panel and return focus to the row"
+    },
+    "deepLinks": {
+      "events": "#/events/<uuid>",
+      "other lists": "#/<page>?event=<uuid>"
     },
     "breakpoints": [
       {
         "name": "sm",
         "value": "640px",
-        "purpose": "Patch cords drawn; trace detail goes horizontal."
+        "purpose": "Filters stop going full width."
       },
       {
         "name": "md",
         "value": "768px",
-        "purpose": "Left rail replaces the mobile header."
+        "purpose": "Rail replaces the mobile header; rows go single-line; panel becomes 512px."
       },
       {
         "name": "lg",
         "value": "1024px",
-        "purpose": "Call log becomes five columns."
+        "purpose": "Route form goes to two columns."
+      },
+      {
+        "name": "xl",
+        "value": "1280px",
+        "purpose": "Main column reserves room so the panel docks beside the list."
+      },
+      {
+        "name": "@md (container)",
+        "value": "28rem",
+        "purpose": "Patch cords drawn; below it, the indented tree."
       }
     ],
     "constraints": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'. No inline style attributes or inline scripts.",
-      "fonts": "Self-hosted only (Atkinson Hyperlegible Next woff2 in apps/console/public/fonts).",
+      "csp": "script-src 'self'; style-src 'self'. No inline style attributes or inline scripts.",
+      "fonts": "Self-hosted only (Inter variable latin woff2 in apps/console/public/fonts, OFL).",
       "untrustedText": "Render as text only; no dangerouslySetInnerHTML or innerHTML.",
       "secrets": "Shown once at create or rotate.",
       "accessibility": "WCAG 2.2 AA in both themes; keyboard operable; async results announced.",
@@ -782,10 +954,10 @@
         "css": "25 KB",
         "fonts": "120 KB"
       },
-      "measuredAt012dfad": {
-        "js": "84.9 KB",
-        "css": "7.1 KB",
-        "fonts": "34.1 KB"
+      "measuredDistBuild20261025": {
+        "js": "87.5 KB",
+        "css": "7.6 KB",
+        "fonts": "48.4 KB (woff2, not re-gzipped)"
       }
     }
   },
@@ -794,130 +966,162 @@
       "name": "Default Button",
       "kind": "button",
       "refersTo": "button",
-      "description": "Everyday action: Refresh, Edit, Sign out. Raised plate, edge border, one cell tall.",
+      "description": "Everyday action: Refresh, Edit, Clear filters. Raised plate, line border, 28px.",
       "html": "<button class=\"ds-btn\"><svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 12a8 8 0 1 1-2.34-5.66\"/><path d=\"M20 4v5h-5\"/></svg>Refresh</button>",
-      "css": ".ds-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--edge); border-radius: 2px; background: var(--raised); color: var(--ink); font-family: 'Atkinson Hyperlegible Next', ui-sans-serif, system-ui, sans-serif; font-size: 0.8125rem; font-weight: 600; line-height: 1; cursor: pointer; transition: background-color 120ms cubic-bezier(0.16,1,0.3,1), border-color 120ms cubic-bezier(0.16,1,0.3,1); } .ds-btn:hover { background: var(--accent-wash); border-color: var(--accent); } .ds-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; } .ds-btn:disabled { opacity: 0.55; cursor: not-allowed; }"
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--raised); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-feature-settings: 'tnum', 'cv05'; font-size: 0.8125rem; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; transition: background-color 100ms, border-color 100ms, color 100ms; } .ds-btn:hover { background: var(--hover); border-color: var(--edge); } .ds-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; } .ds-btn:disabled { opacity: 0.55; cursor: not-allowed; }"
     },
     {
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "The main action of a page or form. Solid exchange blue.",
-      "html": "<button class=\"ds-btn-primary\"><svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg>New route</button>",
-      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 1px solid var(--accent); border-radius: 2px; background: var(--accent); color: var(--accent-ink); font-family: 'Atkinson Hyperlegible Next', ui-sans-serif, system-ui, sans-serif; font-size: 0.8125rem; font-weight: 600; line-height: 1; cursor: pointer; transition: background-color 120ms cubic-bezier(0.16,1,0.3,1), border-color 120ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); } .ds-btn-primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }"
+      "description": "The one main action of a page or form. Solid exchange blue.",
+      "html": "<button class=\"ds-btn ds-btn-primary\"><svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg>New route</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--raised); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-feature-settings: 'tnum', 'cv05'; font-size: 0.8125rem; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; transition: background-color 100ms, border-color 100ms, color 100ms; } .ds-btn:hover { background: var(--hover); border-color: var(--edge); } .ds-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; } .ds-btn:disabled { opacity: 0.55; cursor: not-allowed; } .ds-btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); } .ds-btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--accent-ink); }"
     },
     {
-      "name": "Danger Button and Confirm",
+      "name": "Danger Confirm",
       "kind": "button",
-      "refersTo": "button-danger",
-      "description": "Destructive action in red ink; confirming swaps in a solid red button and Cancel.",
-      "html": "<span class=\"ds-confirm\"><button class=\"ds-btn-danger\">Delete</button><span class=\"ds-confirm-q\">Delete route?</span><button class=\"ds-btn-danger-solid\">Delete route</button></span>",
-      "css": ".ds-confirm { display: inline-flex; align-items: center; gap: 8px; font-family: 'Atkinson Hyperlegible Next', ui-sans-serif, system-ui, sans-serif; } .ds-btn-danger, .ds-btn-danger-solid { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border: 1px solid var(--edge); border-radius: 2px; background: var(--raised); color: var(--bad-ink); font: inherit; font-size: 0.8125rem; font-weight: 600; cursor: pointer; transition: border-color 120ms cubic-bezier(0.16,1,0.3,1); } .ds-btn-danger:hover { border-color: var(--bad); } .ds-btn-danger-solid { background: var(--bad); border-color: var(--bad); color: var(--bad-ink-on); } .ds-btn-danger-solid:hover { border-color: var(--bad-ink); } .ds-btn-danger:focus-visible, .ds-btn-danger-solid:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; } .ds-confirm-q { font-size: 0.75rem; font-weight: 700; color: var(--ink-2); }"
+      "refersTo": "button-danger-solid",
+      "description": "Destructive actions confirm in place: a question, a solid red confirm, and Cancel.",
+      "html": "<span class=\"ds-confirm\"><span class=\"ds-q\">Delete route?</span><button class=\"ds-btn ds-btn-sm ds-btn-danger-solid\">Delete route</button><button class=\"ds-btn ds-btn-sm\">Cancel</button></span>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 28px; padding: 0 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--raised); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-feature-settings: 'tnum', 'cv05'; font-size: 0.8125rem; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; transition: background-color 100ms, border-color 100ms, color 100ms; } .ds-btn:hover { background: var(--hover); border-color: var(--edge); } .ds-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; } .ds-btn:disabled { opacity: 0.55; cursor: not-allowed; } .ds-confirm { display: inline-flex; align-items: center; gap: 8px; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-feature-settings: 'tnum', 'cv05'; } .ds-q { font-size: 0.75rem; font-weight: 500; color: var(--ink-2); white-space: nowrap; } .ds-btn-sm { height: 24px; padding: 0 8px; font-size: 0.75rem; } .ds-btn-danger-solid, .ds-btn-danger-solid:hover { background: var(--bad); border-color: var(--bad); color: var(--bad-ink-on); }"
     },
     {
-      "name": "Text Field",
+      "name": "Filter Bar",
       "kind": "input",
       "refersTo": "input",
-      "description": "Label above, raised field, edge border, accent border on focus.",
-      "html": "<div class=\"ds-field\"><label class=\"ds-label\" for=\"ds-name\">Name</label><input id=\"ds-name\" class=\"ds-input\" placeholder=\"demo-receiver\"><p class=\"ds-hint\">Shown in routes and the call log.</p></div>",
-      "css": ".ds-field { display: flex; flex-direction: column; gap: 4px; font-family: 'Atkinson Hyperlegible Next', ui-sans-serif, system-ui, sans-serif; } .ds-label { color: var(--ink-2); font-size: 0.75rem; line-height: 1rem; font-weight: 700; letter-spacing: 0.02em; } .ds-input { min-height: 32px; padding: 4px 8px; border: 1px solid var(--edge); border-radius: 2px; background: var(--raised); color: var(--ink); font: inherit; font-size: 0.8125rem; line-height: 1.25rem; } .ds-input::placeholder { color: var(--ink-3); } .ds-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); } .ds-hint { margin: 0; font-size: 0.75rem; color: var(--ink-3); }"
+      "description": "Mono type-prefix input (focused by /) and a time-range preset select, both 28px with edge borders.",
+      "html": "<form class=\"ds-filters\" role=\"search\" onsubmit=\"return false\"><input class=\"ds-input ds-mono\" aria-label=\"Type prefix\" placeholder=\"Type prefix\"><select class=\"ds-input ds-select\" aria-label=\"Time range\"><option>All time</option><option>Last 15m</option><option>Last 1h</option><option>Last 24h</option><option>Last 7d</option></select></form>",
+      "css": ".ds-filters { display: flex; flex-wrap: wrap; gap: 8px; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-feature-settings: 'tnum', 'cv05'; } .ds-input { height: 28px; padding: 0 8px; border: 1px solid var(--edge); border-radius: 4px; background: var(--raised); color: var(--ink); font: inherit; font-size: 0.8125rem; line-height: 1.25rem; } .ds-mono { width: 160px; font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.75rem; } .ds-input::placeholder { color: var(--ink-3); } .ds-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); } .ds-select { appearance: none; padding-right: 28px; background-image: url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234a505b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\"); background-repeat: no-repeat; background-position: right 8px center; background-size: 14px; cursor: pointer; }"
+    },
+    {
+      "name": "Outcome Facets",
+      "kind": "chip",
+      "refersTo": "segmented-option-checked",
+      "description": "Segmented outcome filter with lamps and counts; the checked option lifts onto the raised plate.",
+      "html": "<fieldset class=\"ds-seg\"><legend class=\"ds-sr\">Outcome</legend><label class=\"ds-on\">All <span class=\"ds-n\">30</span></label><label><svg viewBox=\"0 0 12 12\" class=\"ds-l\" aria-hidden=\"true\"><circle cx=\"6\" cy=\"6\" r=\"5.25\" stroke-width=\"1.5\" class=\"ds-f-bad ds-s-badink\"/><rect x=\"3\" y=\"5.25\" width=\"6\" height=\"1.5\" class=\"ds-f-ground\"/></svg>Failed <span class=\"ds-n\">11</span></label><label><svg viewBox=\"0 0 12 12\" class=\"ds-l\" aria-hidden=\"true\"><circle cx=\"6\" cy=\"6\" r=\"5.25\" stroke-width=\"1.5\" class=\"ds-f-ground ds-s-warnink\"/><circle cx=\"6\" cy=\"6\" r=\"2.5\" class=\"ds-f-warn\"/></svg>Pending <span class=\"ds-n\">1</span></label><label><svg viewBox=\"0 0 12 12\" class=\"ds-l\" aria-hidden=\"true\"><circle cx=\"6\" cy=\"6\" r=\"4.5\" stroke-width=\"1\" class=\"ds-f-ground ds-s-edge\"/></svg>No route <span class=\"ds-n\">3</span></label><label><svg viewBox=\"0 0 12 12\" class=\"ds-l\" aria-hidden=\"true\"><circle cx=\"6\" cy=\"6\" r=\"5.25\" stroke-width=\"1.5\" class=\"ds-f-ok ds-s-okink\"/></svg>Delivered <span class=\"ds-n\">12</span></label></fieldset>",
+      "css": ".ds-seg { display: inline-flex; height: 28px; margin: 0; padding: 2px; border: 1px solid var(--line); border-radius: 4px; background: var(--rail); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-feature-settings: 'tnum', 'cv05'; } .ds-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); } .ds-seg label { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; border-radius: 2px; color: var(--ink-2); font-size: 0.75rem; font-weight: 500; white-space: nowrap; cursor: pointer; } .ds-seg label:hover { color: var(--ink); } .ds-seg .ds-on { background: var(--raised); color: var(--ink); box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgb(10 11 13 / 0.08); } .ds-n { color: var(--ink-3); } .ds-l { width: 8px; height: 8px; } .ds-f-ok { fill: var(--ok); } .ds-f-warn { fill: var(--warn); } .ds-f-bad { fill: var(--bad); } .ds-f-ground { fill: var(--ground); } .ds-f-raised { fill: var(--raised); } .ds-s-ok { stroke: var(--ok); } .ds-s-warn { stroke: var(--warn); } .ds-s-bad { stroke: var(--bad); } .ds-s-line { stroke: var(--line); } .ds-s-okink { stroke: var(--ok-ink); } .ds-s-warnink { stroke: var(--warn-ink); } .ds-s-badink { stroke: var(--bad-ink); } .ds-s-edge { stroke: var(--edge); }"
     },
     {
       "name": "Rail Navigation",
       "kind": "nav",
       "refersTo": "nav-item",
-      "description": "Left rail items; the current page gets accent wash and an accent icon.",
-      "html": "<nav class=\"ds-rail\" aria-label=\"Main\"><a class=\"ds-nav ds-nav-on\" aria-current=\"page\" href=\"#\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" aria-hidden=\"true\"><path d=\"M4 5h16M4 12h16M4 19h16\"/><circle cx=\"8\" cy=\"5\" r=\"1.5\"/><circle cx=\"14\" cy=\"12\" r=\"1.5\"/><circle cx=\"10\" cy=\"19\" r=\"1.5\"/></svg>Overview</a><a class=\"ds-nav\" href=\"#\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" aria-hidden=\"true\"><path d=\"M5 6c7 0 7 12 14 12\"/><rect x=\"3\" y=\"4\" width=\"4\" height=\"4\"/><rect x=\"17\" y=\"16\" width=\"4\" height=\"4\"/></svg>Routes</a></nav>",
-      "css": ".ds-rail { display: flex; flex-direction: column; gap: 2px; width: 216px; padding: 12px; background: var(--rail); border-right: 1px solid var(--edge); font-family: 'Atkinson Hyperlegible Next', ui-sans-serif, system-ui, sans-serif; } .ds-nav { display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; color: var(--ink-2); font-size: 0.8125rem; font-weight: 700; text-decoration: none; } .ds-nav:hover { background: var(--raised); color: var(--ink); } .ds-nav:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; } .ds-nav-on, .ds-nav-on:hover { background: var(--accent-wash); color: var(--ink); } .ds-nav-on svg { color: var(--accent); }"
+      "description": "200px rail; 28px items; the current page gets the hover fill and an accent icon.",
+      "html": "<nav class=\"ds-rail\" aria-label=\"Main\"><a class=\"ds-nav\" aria-current=\"page\" href=\"#\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 6h16M4 12h16M4 18h16\"/><circle cx=\"8\" cy=\"6\" r=\"1.5\"/><circle cx=\"15\" cy=\"12\" r=\"1.5\"/><circle cx=\"10\" cy=\"18\" r=\"1.5\"/></svg>Overview</a><a class=\"ds-nav\" href=\"#\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 6h16M4 12h16M4 18h16\"/></svg>Events</a><a class=\"ds-nav\" href=\"#\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 6c7 0 7 12 14 12\"/><rect x=\"3\" y=\"4\" width=\"4\" height=\"4\"/><rect x=\"17\" y=\"16\" width=\"4\" height=\"4\"/></svg>Routes</a></nav>",
+      "css": ".ds-rail { display: flex; flex-direction: column; gap: 1px; width: 200px; padding: 8px; background: var(--rail); border-right: 1px solid var(--rule); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-feature-settings: 'tnum', 'cv05'; } .ds-nav { display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 8px; border-radius: 4px; color: var(--ink-2); font-size: 0.8125rem; font-weight: 500; text-decoration: none; } .ds-nav svg { color: var(--ink-3); } .ds-nav:hover { background: var(--hover); color: var(--ink); } .ds-nav:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; } .ds-nav[aria-current=page] { background: var(--hover); color: var(--ink); } .ds-nav[aria-current=page] svg { color: var(--accent); }"
     },
     {
-      "name": "Lamps",
+      "name": "Call Log Rows",
       "kind": "custom",
-      "refersTo": "lamp",
-      "description": "The four status lamps. Shape differs per state; each is paired with text.",
-      "html": "<ul class=\"ds-lamps\"><li><svg viewBox=\"0 0 12 12\" class=\"ds-lamp\" aria-hidden=\"true\"><circle cx=\"6\" cy=\"6\" r=\"5.25\" stroke-width=\"1.5\" class=\"ds-f-ok ds-s-okink\"/></svg>succeeded</li><li><svg viewBox=\"0 0 12 12\" class=\"ds-lamp\" aria-hidden=\"true\"><circle cx=\"6\" cy=\"6\" r=\"5.25\" stroke-width=\"1.5\" class=\"ds-f-ground ds-s-warnink\"/><circle cx=\"6\" cy=\"6\" r=\"2.5\" class=\"ds-f-warn\"/></svg><span class=\"ds-t-warn\">pending</span></li><li><svg viewBox=\"0 0 12 12\" class=\"ds-lamp\" aria-hidden=\"true\"><circle cx=\"6\" cy=\"6\" r=\"5.25\" stroke-width=\"1.5\" class=\"ds-f-bad ds-s-badink\"/><rect x=\"3\" y=\"5.25\" width=\"6\" height=\"1.5\" class=\"ds-f-ground\"/></svg><span class=\"ds-t-bad\">failed</span></li><li><svg viewBox=\"0 0 12 12\" class=\"ds-lamp\" aria-hidden=\"true\"><circle cx=\"6\" cy=\"6\" r=\"4.5\" stroke-width=\"1\" class=\"ds-f-ground ds-s-edge\"/></svg><span class=\"ds-t-off\">not reached</span></li></ul>",
-      "css": ".ds-lamps { display: flex; gap: 16px; margin: 0; padding: 0; list-style: none; font-family: 'Atkinson Hyperlegible Next', ui-sans-serif, system-ui, sans-serif; font-size: 0.8125rem; font-weight: 700; color: var(--ink); } .ds-lamps li { display: inline-flex; align-items: center; gap: 6px; } .ds-lamp { width: 12px; height: 12px; animation: ds-settle 180ms cubic-bezier(0.16,1,0.3,1) both; } .ds-f-ok { fill: var(--ok); } .ds-f-warn { fill: var(--warn); } .ds-f-bad { fill: var(--bad); } .ds-f-ground { fill: var(--ground); } .ds-s-okink { stroke: var(--ok-ink); } .ds-s-warnink { stroke: var(--warn-ink); } .ds-s-badink { stroke: var(--bad-ink); } .ds-s-edge { stroke: var(--edge); } .ds-t-warn { color: var(--warn-ink); } .ds-t-bad { color: var(--bad-ink); } .ds-t-off { color: var(--ink-2); } @keyframes ds-settle { from { opacity: 0.25; transform: scale(0.55); } to { opacity: 1; transform: scale(1); } } @media (prefers-reduced-motion: reduce) { .ds-lamp { animation: none; } }"
+      "refersTo": "table-row",
+      "description": "Single-line 32px rows, one fact per column: inline trace, mono type, line, condensed outcome, age, icon Replay. Hover and selection by fill only.",
+      "html": "<div class=\"ds-log\" role=\"table\" aria-label=\"Events\"><div class=\"ds-row ds-th\" role=\"row\"><span role=\"columnheader\">Trace</span><span role=\"columnheader\">Type</span><span role=\"columnheader\">Line</span><span role=\"columnheader\">Outcome</span><span role=\"columnheader\" class=\"ds-r\">Age</span><span role=\"columnheader\"></span></div><div class=\"ds-row ds-tr\" role=\"row\"><span role=\"cell\"><svg class=\"ds-mini\" viewBox=\"0 0 56 10\" role=\"img\" aria-label=\"Trace\"><line x1=\"8\" x2=\"16\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-ok\"/><line x1=\"20\" x2=\"28\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-ok\"/><line x1=\"32\" x2=\"40\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-ok\"/><line x1=\"44\" x2=\"52\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-line\"/><circle cx=\"4\" cy=\"5\" r=\"3\" stroke-width=\"1\" class=\"ds-f-ok ds-s-ok\"/><circle cx=\"16\" cy=\"5\" r=\"3\" stroke-width=\"1\" class=\"ds-f-ok ds-s-ok\"/><circle cx=\"28\" cy=\"5\" r=\"3\" stroke-width=\"1\" class=\"ds-f-ok ds-s-ok\"/><circle cx=\"40\" cy=\"5\" r=\"3\" stroke-width=\"1\" class=\"ds-f-ok ds-s-ok\"/><circle cx=\"52\" cy=\"5\" r=\"2.5\" stroke-width=\"1\" class=\"ds-f-ground ds-s-edge\"/></svg></span><span role=\"cell\" class=\"ds-ty\">webhook.order</span><span role=\"cell\" class=\"ds-ln\"><span class=\"ds-code\">whk</span>e004c0c2</span><span role=\"cell\" class=\"ds-plain\">1 delivered</span><span role=\"cell\" class=\"ds-r ds-age\">22m</span><span role=\"cell\"></span></div><div class=\"ds-row ds-tr ds-sel\" role=\"row\"><span role=\"cell\"><svg class=\"ds-mini\" viewBox=\"0 0 56 10\" role=\"img\" aria-label=\"Trace\"><line x1=\"8\" x2=\"16\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-ok\"/><line x1=\"20\" x2=\"28\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-ok\"/><line x1=\"32\" x2=\"40\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-bad\"/><line x1=\"44\" x2=\"52\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-line\"/><circle cx=\"4\" cy=\"5\" r=\"3\" stroke-width=\"1\" class=\"ds-f-ok ds-s-ok\"/><circle cx=\"16\" cy=\"5\" r=\"3\" stroke-width=\"1\" class=\"ds-f-ok ds-s-ok\"/><circle cx=\"28\" cy=\"5\" r=\"3\" stroke-width=\"1\" class=\"ds-f-ok ds-s-ok\"/><circle cx=\"40\" cy=\"5\" r=\"3\" stroke-width=\"1\" class=\"ds-f-bad ds-s-bad\"/><circle cx=\"52\" cy=\"5\" r=\"2.5\" stroke-width=\"1\" class=\"ds-f-ground ds-s-edge\"/></svg></span><span role=\"cell\" class=\"ds-ty\">webhook.alert</span><span role=\"cell\" class=\"ds-ln\"><span class=\"ds-code\">whk</span>e004c0c2</span><span role=\"cell\" class=\"ds-bad\" title=\"fetch failed: connect ECONNREFUSED 127.0.0.1:4555\">ECONNREFUSED :4555</span><span role=\"cell\" class=\"ds-r ds-age\">29m</span><span role=\"cell\" class=\"ds-r\"><button class=\"ds-ib\" aria-label=\"Replay delivery\" title=\"Replay delivery\"><svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 12a8 8 0 1 0 2.34-5.66\"/><path d=\"M4 4v5h5\"/><path d=\"M10 9.5v5l4-2.5z\"/></svg></button></span></div><div class=\"ds-row ds-tr\" role=\"row\"><span role=\"cell\"><svg class=\"ds-mini\" viewBox=\"0 0 56 10\" role=\"img\" aria-label=\"Trace\"><line x1=\"8\" x2=\"16\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-ok\"/><line x1=\"20\" x2=\"28\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-line\"/><line x1=\"32\" x2=\"40\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-line\"/><line x1=\"44\" x2=\"52\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-line\"/><circle cx=\"4\" cy=\"5\" r=\"3\" stroke-width=\"1\" class=\"ds-f-ok ds-s-ok\"/><circle cx=\"16\" cy=\"5\" r=\"3\" stroke-width=\"1\" class=\"ds-f-ok ds-s-ok\"/><circle cx=\"28\" cy=\"5\" r=\"2.5\" stroke-width=\"1\" class=\"ds-f-ground ds-s-edge\"/><circle cx=\"40\" cy=\"5\" r=\"2.5\" stroke-width=\"1\" class=\"ds-f-ground ds-s-edge\"/><circle cx=\"52\" cy=\"5\" r=\"2.5\" stroke-width=\"1\" class=\"ds-f-ground ds-s-edge\"/></svg></span><span role=\"cell\" class=\"ds-ty\">webhook.heartbeat</span><span role=\"cell\" class=\"ds-ln\"><span class=\"ds-code\">whk</span>e004c0c2</span><span role=\"cell\" class=\"ds-plain\">no route</span><span role=\"cell\" class=\"ds-r ds-age\">43m</span><span role=\"cell\"></span></div><div class=\"ds-row ds-tr\" role=\"row\"><span role=\"cell\"><svg class=\"ds-mini\" viewBox=\"0 0 56 10\" role=\"img\" aria-label=\"Trace\"><line x1=\"8\" x2=\"16\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-ok\"/><line x1=\"20\" x2=\"28\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-ok\"/><line x1=\"32\" x2=\"40\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-warn\"/><line x1=\"44\" x2=\"52\" y1=\"5\" y2=\"5\" stroke-width=\"1\" class=\"ds-s-line\"/><circle cx=\"4\" cy=\"5\" r=\"3\" stroke-width=\"1\" class=\"ds-f-ok ds-s-ok\"/><circle cx=\"16\" cy=\"5\" r=\"3\" stroke-width=\"1\" class=\"ds-f-ok ds-s-ok\"/><circle cx=\"28\" cy=\"5\" r=\"3\" stroke-width=\"1\" class=\"ds-f-ok ds-s-ok\"/><circle cx=\"40\" cy=\"5\" r=\"3\" stroke-width=\"1.5\" class=\"ds-f-raised ds-s-warn\"/><circle cx=\"52\" cy=\"5\" r=\"2.5\" stroke-width=\"1\" class=\"ds-f-ground ds-s-edge\"/></svg></span><span role=\"cell\" class=\"ds-ty\">webhook.order</span><span role=\"cell\" class=\"ds-ln\"><span class=\"ds-code\">whk</span>e004c0c2</span><span role=\"cell\" class=\"ds-warn\">1 pending</span><span role=\"cell\" class=\"ds-r ds-age\">50m</span><span role=\"cell\"></span></div></div>",
+      "css": ".ds-log { font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-feature-settings: 'tnum', 'cv05'; font-size: 0.8125rem; line-height: 1.25rem; color: var(--ink); } .ds-row { display: grid; grid-template-columns: 56px minmax(0,1.3fr) minmax(136px,0.7fr) minmax(140px,1fr) 64px 28px; gap: 0 16px; align-items: center; padding: 0 12px; border-bottom: 1px solid var(--rule); } .ds-th { height: 28px; color: var(--ink-3); font-size: 0.75rem; font-weight: 500; background: var(--ground); } .ds-tr { min-height: 32px; cursor: pointer; } .ds-tr:hover { background: var(--hover); } .ds-tr.ds-sel { background: var(--sel); } .ds-tr:focus-within { outline: 2px solid var(--accent); outline-offset: -2px; } .ds-mini { width: 56px; height: 10px; overflow: visible; display: block; } .ds-ty, .ds-ln, .ds-bad { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.75rem; } .ds-ty { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-ln { display: flex; align-items: center; gap: 6px; color: var(--ink-2); } .ds-code { display: grid; place-items: center; height: 20px; min-width: 32px; padding: 0 4px; border: 1px solid var(--line); border-radius: 2px; color: var(--ink-2); font-size: 0.625rem; letter-spacing: 0.04em; line-height: 1; text-transform: uppercase; } .ds-plain { color: var(--ink-2); } .ds-warn { color: var(--warn-ink); } .ds-bad { color: var(--bad-ink); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-r { text-align: right; justify-self: end; } .ds-age { color: var(--ink-3); font-size: 0.75rem; } .ds-ib { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--ink-2); cursor: pointer; } .ds-ib:hover { background: var(--hover); color: var(--ink); } .ds-ib:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; } .ds-f-ok { fill: var(--ok); } .ds-f-warn { fill: var(--warn); } .ds-f-bad { fill: var(--bad); } .ds-f-ground { fill: var(--ground); } .ds-f-raised { fill: var(--raised); } .ds-s-ok { stroke: var(--ok); } .ds-s-warn { stroke: var(--warn); } .ds-s-bad { stroke: var(--bad); } .ds-s-line { stroke: var(--line); } .ds-s-okink { stroke: var(--ok-ink); } .ds-s-warnink { stroke: var(--warn-ink); } .ds-s-badink { stroke: var(--bad-ink); } .ds-s-edge { stroke: var(--edge); }"
     },
     {
-      "name": "Five-Lamp Trace",
-      "kind": "custom",
-      "refersTo": "trace",
-      "description": "Received, verified, routed, delivered, acted on one baseline; wires lit up to the first failure.",
-      "html": "<div class=\"ds-trace-wrap\"><span class=\"ds-codes\" aria-hidden=\"true\"><abbr title=\"Received\">RCV</abbr><abbr title=\"Verified\">VER</abbr><abbr title=\"Routed\">RTE</abbr><abbr title=\"Delivered\">DLV</abbr><abbr title=\"Acted\">ACT</abbr></span><svg class=\"ds-trace\" viewBox=\"0 0 120 24\" role=\"img\" aria-label=\"Trace. Received: Received and stored. Verified: Signature verified. Routed: Routed to destinations. Delivered: 1 delivery: 1 failed. Acted: Not reached: no actions.\"><line x1=\"18\" x2=\"30\" y1=\"12\" y2=\"12\" stroke-width=\"1.5\" class=\"ds-s-ok\"/><line x1=\"42\" x2=\"54\" y1=\"12\" y2=\"12\" stroke-width=\"1.5\" class=\"ds-s-ok\"/><line x1=\"66\" x2=\"78\" y1=\"12\" y2=\"12\" stroke-width=\"1.5\" class=\"ds-s-bad\"/><line x1=\"90\" x2=\"102\" y1=\"12\" y2=\"12\" stroke-width=\"1\" stroke-dasharray=\"2 2\" class=\"ds-s-edge\"/><circle cx=\"12\" cy=\"12\" r=\"5.25\" stroke-width=\"1.5\" class=\"ds-f-ok ds-s-okink\"/><circle cx=\"36\" cy=\"12\" r=\"5.25\" stroke-width=\"1.5\" class=\"ds-f-ok ds-s-okink\"/><circle cx=\"60\" cy=\"12\" r=\"5.25\" stroke-width=\"1.5\" class=\"ds-f-ok ds-s-okink\"/><circle cx=\"84\" cy=\"12\" r=\"5.25\" stroke-width=\"1.5\" class=\"ds-f-bad ds-s-badink\"/><rect x=\"81\" y=\"11.25\" width=\"6\" height=\"1.5\" class=\"ds-f-ground\"/><circle cx=\"108\" cy=\"12\" r=\"4.5\" stroke-width=\"1\" class=\"ds-f-ground ds-s-edge\"/></svg></div>",
-      "css": ".ds-trace-wrap { display: inline-flex; flex-direction: column; gap: 2px; width: 120px; } .ds-codes { display: grid; grid-template-columns: repeat(5, 1fr); justify-items: center; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.625rem; line-height: 1rem; letter-spacing: 0.05em; color: var(--ink-3); } .ds-codes abbr { text-decoration: none; } .ds-trace { width: 120px; height: 24px; } .ds-f-ok { fill: var(--ok); } .ds-f-bad { fill: var(--bad); } .ds-f-ground { fill: var(--ground); } .ds-s-ok { stroke: var(--ok); } .ds-s-bad { stroke: var(--bad); } .ds-s-okink { stroke: var(--ok-ink); } .ds-s-badink { stroke: var(--bad-ink); } .ds-s-edge { stroke: var(--edge); }"
+      "name": "Detail Panel",
+      "kind": "card",
+      "refersTo": "detail-panel",
+      "description": "Non-modal, deep-linked slide-over: 44px header with mono type, then the stacked stage trace and a facts list.",
+      "html": "<section class=\"ds-panel\" role=\"dialog\" aria-labelledby=\"ds-pt\"><header class=\"ds-ph\"><h2 id=\"ds-pt\">webhook.alert</h2><span class=\"ds-pa\">29m ago</span><button class=\"ds-ib\" aria-label=\"Close panel\" title=\"Close (Esc)\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 6l12 12M18 6L6 18\"/></svg></button></header><div class=\"ds-pb\"><ol class=\"ds-st\"><li><svg viewBox=\"0 0 12 12\" class=\"ds-l10\" aria-hidden=\"true\"><circle cx=\"6\" cy=\"6\" r=\"5.25\" stroke-width=\"1.5\" class=\"ds-f-ok ds-s-okink\"/></svg><span class=\"ds-sn\">Received</span><span class=\"ds-pl\">Received and stored</span></li><li><svg viewBox=\"0 0 12 12\" class=\"ds-l10\" aria-hidden=\"true\"><circle cx=\"6\" cy=\"6\" r=\"5.25\" stroke-width=\"1.5\" class=\"ds-f-ok ds-s-okink\"/></svg><span class=\"ds-sn\">Verified</span><span class=\"ds-pl\">Signature verified</span></li><li><svg viewBox=\"0 0 12 12\" class=\"ds-l10\" aria-hidden=\"true\"><circle cx=\"6\" cy=\"6\" r=\"5.25\" stroke-width=\"1.5\" class=\"ds-f-ok ds-s-okink\"/></svg><span class=\"ds-sn\">Routed</span><span class=\"ds-pl\">Routed to destinations</span></li><li><svg viewBox=\"0 0 12 12\" class=\"ds-l10\" aria-hidden=\"true\"><circle cx=\"6\" cy=\"6\" r=\"5.25\" stroke-width=\"1.5\" class=\"ds-f-bad ds-s-badink\"/><rect x=\"3\" y=\"5.25\" width=\"6\" height=\"1.5\" class=\"ds-f-ground\"/></svg><span class=\"ds-sn\">Delivered</span><span class=\"ds-pbad\">1 delivery: 1 failed</span></li><li><svg viewBox=\"0 0 12 12\" class=\"ds-l10\" aria-hidden=\"true\"><circle cx=\"6\" cy=\"6\" r=\"4.5\" stroke-width=\"1\" class=\"ds-f-ground ds-s-edge\"/></svg><span class=\"ds-sn\">Acted</span><span class=\"ds-pl\">Not reached: no actions</span></li></ol><dl class=\"ds-facts\"><dt>Event ID</dt><dd class=\"ds-mn\">425ef365-57bd-4d25-8b34-b269a221b609</dd><dt>Received</dt><dd>29m ago <span class=\"ds-mn ds-i3\">2026-10-25 23:13:47.552 UTC</span></dd></dl></div></section>",
+      "css": ".ds-panel { width: 512px; max-width: 100%; background: var(--raised); border-left: 1px solid var(--line); box-shadow: 0 8px 24px -12px rgb(10 11 13 / 0.3); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-feature-settings: 'tnum', 'cv05'; font-size: 0.8125rem; line-height: 1.25rem; animation: ds-slide 150ms cubic-bezier(0.16,1,0.3,1) both; } @keyframes ds-slide { from { opacity: 0; transform: translateX(1rem); } } .ds-ph { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--rule); } .ds-ph h2 { flex: 1; margin: 0; font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.75rem; font-weight: 600; } .ds-pa { font-size: 0.75rem; color: var(--ink-3); } .ds-ib { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--ink-2); cursor: pointer; } .ds-ib:hover { background: var(--hover); color: var(--ink); } .ds-ib:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; } .ds-pb { padding: 12px 16px; display: flex; flex-direction: column; gap: 16px; } .ds-st { margin: 0; padding: 0; list-style: none; } .ds-st li { display: grid; grid-template-columns: 16px 72px minmax(0,1fr); gap: 0 8px; align-items: center; min-height: 24px; } .ds-l10 { width: 10px; height: 10px; justify-self: center; } .ds-sn { font-weight: 500; } .ds-pl { color: var(--ink-2); } .ds-pbad { color: var(--bad-ink); } .ds-facts { display: grid; grid-template-columns: max-content minmax(0,1fr); gap: 4px 16px; margin: 0; padding-top: 12px; border-top: 1px solid var(--rule); } .ds-facts dt { font-size: 0.75rem; color: var(--ink-3); } .ds-facts dd { margin: 0; overflow-wrap: anywhere; } .ds-mn { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.75rem; } .ds-i3 { color: var(--ink-3); margin-left: 8px; } @media (prefers-reduced-motion: reduce) { .ds-panel { animation: none; } } .ds-f-ok { fill: var(--ok); } .ds-f-warn { fill: var(--warn); } .ds-f-bad { fill: var(--bad); } .ds-f-ground { fill: var(--ground); } .ds-f-raised { fill: var(--raised); } .ds-s-ok { stroke: var(--ok); } .ds-s-warn { stroke: var(--warn); } .ds-s-bad { stroke: var(--bad); } .ds-s-line { stroke: var(--line); } .ds-s-okink { stroke: var(--ok-ink); } .ds-s-warnink { stroke: var(--warn-ink); } .ds-s-badink { stroke: var(--bad-ink); } .ds-s-edge { stroke: var(--edge); }"
     },
     {
       "name": "Patch Cord",
       "kind": "custom",
       "refersTo": "jack",
-      "description": "A live route: source jack, accent cords, destination jacks. Below 640px the cords collapse into an indented tree.",
-      "html": "<div class=\"ds-patch\"><span class=\"ds-jack\"><span class=\"ds-code\">whk</span><span class=\"ds-jl\">webhook 25ff18df</span><span class=\"ds-sock ds-sock-out\"></span></span><svg class=\"ds-cords\" viewBox=\"0 0 80 72\" preserveAspectRatio=\"none\" aria-hidden=\"true\"><path d=\"M0 16 C 40 16, 40 16, 80 16\"/><path d=\"M0 16 C 40 16, 40 56, 80 56\"/></svg><ul class=\"ds-dests\" aria-label=\"Destinations\"><li><span class=\"ds-jack\"><span class=\"ds-sock ds-sock-in\"></span><span class=\"ds-code\">http</span><span class=\"ds-jl\">demo-receiver</span></span></li><li><span class=\"ds-jack\"><span class=\"ds-sock ds-sock-in\"></span><span class=\"ds-code\">http</span><span class=\"ds-jl\">demo-orders-v3</span></span></li></ul></div>",
-      "css": ".ds-patch { display: grid; grid-template-columns: minmax(0,15rem) 5rem minmax(0,1fr); align-items: start; font-family: 'Atkinson Hyperlegible Next', ui-sans-serif, system-ui, sans-serif; } .ds-jack { position: relative; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px 0 4px; border: 1px solid var(--edge); background: var(--raised); color: var(--ink); font-size: 0.8125rem; } .ds-code { display: grid; place-items: center; height: 24px; min-width: 36px; padding: 0 4px; border: 1px solid var(--rule); background: var(--ground); color: var(--ink-2); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.6875rem; line-height: 1; letter-spacing: 0.025em; text-transform: uppercase; } .ds-jl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-sock { position: absolute; top: 50%; width: 8px; height: 8px; transform: translateY(-50%); background: var(--accent); border: 1px solid var(--accent); } .ds-sock-out { right: -4px; } .ds-sock-in { left: -4px; } .ds-cords { width: 100%; height: 72px; overflow: visible; } .ds-cords path { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; } .ds-dests { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; } @media (max-width: 639px) { .ds-patch { grid-template-columns: 1fr; } .ds-cords, .ds-sock-out { display: none; } .ds-dests { margin: 8px 0 0 16px; padding-left: 16px; border-left: 1px solid var(--edge); } .ds-dests li { position: relative; } .ds-dests li::before { content: ''; position: absolute; top: 50%; left: -16px; width: 16px; height: 1px; background: var(--edge); } }"
+      "description": "A live route: source jack, accent cords, 24px destination jacks with sockets. Collapses to an indented tree in narrow containers.",
+      "html": "<div class=\"ds-patch\"><span class=\"ds-jack\"><span class=\"ds-code\">whk</span><span class=\"ds-jl\">webhook 25ff18df</span><span class=\"ds-sock ds-out\"></span></span><svg class=\"ds-cords\" viewBox=\"0 0 64 52\" preserveAspectRatio=\"none\" aria-hidden=\"true\"><path d=\"M0 12 C 32 12, 32 12, 64 12\"/><path d=\"M0 12 C 32 12, 32 40, 64 40\"/></svg><ul class=\"ds-dests\" aria-label=\"Destinations\"><li><span class=\"ds-jack\"><span class=\"ds-sock ds-in\"></span><span class=\"ds-code\">http</span><span class=\"ds-jl\">demo-receiver</span></span></li><li><span class=\"ds-jack\"><span class=\"ds-sock ds-in\"></span><span class=\"ds-code\">http</span><span class=\"ds-jl\">demo-orders-v3</span></span></li></ul></div>",
+      "css": ".ds-patch { display: grid; grid-template-columns: minmax(0,11rem) 3rem minmax(0,1fr); container-type: inline-size; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-feature-settings: 'tnum', 'cv05'; } .ds-jack { position: relative; display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px 0 2px; border: 1px solid var(--line); border-radius: 2px; background: var(--raised); color: var(--ink); font-size: 0.75rem; } .ds-code { display: grid; place-items: center; height: 18px; min-width: 28px; padding: 0 4px; border: 1px solid var(--line); border-radius: 2px; background: var(--ground); color: var(--ink-2); font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.625rem; letter-spacing: 0.04em; line-height: 1; text-transform: uppercase; } .ds-jl { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-sock { position: absolute; top: 50%; width: 6px; height: 6px; transform: translateY(-50%); background: var(--accent); border: 1px solid var(--accent); } .ds-out { right: -3.5px; } .ds-in { left: -3.5px; } .ds-cords { width: 100%; height: 52px; overflow: visible; } .ds-cords path { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; } .ds-dests { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; } @media (max-width: 447px) { .ds-patch { grid-template-columns: 1fr; } .ds-cords, .ds-out { display: none; } .ds-dests { margin: 4px 0 0 12px; padding-left: 12px; border-left: 1px solid var(--line); } .ds-dests li { position: relative; } .ds-dests li::before { content: ''; position: absolute; top: 50%; left: -12px; width: 12px; height: 1px; background: var(--line); } }"
     },
     {
       "name": "Secret Box",
       "kind": "card",
-      "refersTo": "panel",
+      "refersTo": "button-primary",
       "description": "Shows a new signing secret exactly once, with Copy and 'I saved it'.",
-      "html": "<section class=\"ds-secret\" role=\"status\"><h2>Signing secret</h2><p class=\"ds-warnline\">You won't see this again. Copy it now.</p><div class=\"ds-row\"><input class=\"ds-sv\" readonly value=\"whsec_9f2c4e1ab7d0\" aria-label=\"Signing secret\"><button class=\"ds-copy\">Copy</button></div></section>",
-      "css": ".ds-secret { padding: 16px; border: 2px solid var(--accent); background: var(--raised); box-shadow: 0 6px 16px -8px rgb(10 12 11 / 0.35); font-family: 'Atkinson Hyperlegible Next', ui-sans-serif, system-ui, sans-serif; color: var(--ink); } .ds-secret h2 { margin: 0; font-size: 0.875rem; font-weight: 700; } .ds-warnline { margin: 4px 0 0; font-size: 0.8125rem; font-weight: 700; color: var(--warn-ink); } .ds-row { display: flex; gap: 8px; margin-top: 12px; } .ds-sv { flex: 1; min-height: 32px; padding: 4px 8px; border: 1px solid var(--edge); border-radius: 2px; background: var(--raised); color: var(--ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8125rem; } .ds-sv:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); } .ds-copy { height: 32px; padding: 0 12px; border: 1px solid var(--accent); border-radius: 2px; background: var(--accent); color: var(--accent-ink); font: inherit; font-size: 0.8125rem; font-weight: 600; cursor: pointer; } .ds-copy:hover { background: var(--accent-hover); border-color: var(--accent-hover); } .ds-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }"
+      "html": "<section class=\"ds-secret\" role=\"status\"><h2>Signing secret</h2><p class=\"ds-wl\">You won't see this again. Copy it now.</p><div class=\"ds-sr2\"><input class=\"ds-sv\" readonly value=\"whsec_9f2c4e1ab7d0\" aria-label=\"Signing secret\"><button class=\"ds-cp\">Copy</button></div></section>",
+      "css": ".ds-secret { padding: 12px; border: 1px solid var(--accent); border-radius: 4px; background: var(--raised); box-shadow: 0 8px 24px -12px rgb(10 11 13 / 0.3); color: var(--ink); font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-feature-settings: 'tnum', 'cv05'; font-size: 0.8125rem; } .ds-secret h2 { margin: 0; font-size: 0.8125rem; font-weight: 600; } .ds-wl { margin: 2px 0 0; font-size: 0.75rem; font-weight: 500; color: var(--warn-ink); } .ds-sr2 { display: flex; gap: 8px; margin-top: 8px; } .ds-sv { flex: 1; height: 28px; padding: 0 8px; border: 1px solid var(--edge); border-radius: 4px; background: var(--raised); color: var(--ink); font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.75rem; } .ds-sv:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); } .ds-cp { height: 28px; padding: 0 10px; border: 1px solid var(--accent); border-radius: 4px; background: var(--accent); color: var(--accent-ink); font: inherit; font-weight: 500; cursor: pointer; } .ds-cp:hover { background: var(--accent-hover); border-color: var(--accent-hover); } .ds-cp:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }"
     }
   ],
   "narrative": {
     "northStar": "The Exchange",
-    "overview": "**Creative North Star: \"The Exchange\"**\n\nThe console looks and works like a telephone switchboard. Connections are lines. Routes are patch cords from a line jack to destination jacks. Each event is a call, and a row of five lamps shows how far it got. The frame is plain enamel equipment in light mode and black bakelite in dark mode. The only color that isn't a lamp is exchange blue, and it means \"live, selected, or yours to press.\"\n\nThe density is a phone directory, not a dashboard. Rows are compact and divided by hairline rules. Machine text (event types, IDs, payloads, short codes) is set in mono. There are no KPI tiles and no padded cards around list data. Truth comes before comfort: failures show their cause inline, in red ink, with a Replay control at the end of the row.\n\nMotion is small and mechanical. A lamp settles into place when its state changes, like a bulb warming up. Nothing else animates except quick color shifts on hover.",
+    "overview": "**Creative North Star: \"The Exchange\"**\n\nThe console still works like a telephone switchboard. Connections are lines. Routes are patch cords from a line jack to destination jacks. Each event is a call, and five small lamps show how far it got. What changed is the frame. It is now plain, neutral equipment: near-white in light mode and near-black in dark mode, with greys that lean only slightly cool. Exchange blue is still the only color that isn't a lamp. It means \"live, primary, or yours to press.\"\n\nThe density is a log explorer. Lists are tables of single-line 32px rows, one fact per column, more than 20 to a desktop screen. Each row says just enough to scan: a tiny trace, the type, the line, a short outcome, the age, and an icon Replay when something failed. Everything else (the full cause, every timestamp, the payload) lives in a slide-over panel that opens beside the list and has its own link. Keys move you through it: `j` and `k` to move, Enter to open, Esc to close, `/` to filter.\n\nMotion stays small and mechanical. Lamps settle into place when their state changes. The panel slides in a short way. Buttons and rows shift color fast on hover. Nothing else moves.",
     "keyCharacteristics": [
-      "Cool grey-green enamel frame (light) or black bakelite (dark); both themes are first class.",
-      "One accent, exchange blue, for every live, selected, focused, or primary thing.",
-      "Four lamp states (lit green, amber, red, unlit) that always carry text.",
-      "Patch cords drawn from a source jack to each destination jack.",
-      "Directory-dense rows on a 4px grid with a 32px cell.",
-      "Flat surfaces, square-ish 2px corners, hairline rules."
+      "Neutral near-white (light) and near-black (dark) grounds; both themes are first class.",
+      "One accent, exchange blue, for live, primary, and focused things.",
+      "Four lamp states that always carry words. Grey means nothing happened; amber means work is still in flight.",
+      "Single-line 32px rows, one fact per column; detail lives in the slide-over panel.",
+      "Inter at a 13px base, system mono at 12px, tabular numbers everywhere.",
+      "Flat surfaces, 4px control corners, 2px jack corners, hairline rules."
     ],
     "rules": [
       {
         "name": "The One Accent Rule",
-        "body": "Exchange blue is the only non-lamp hue. It marks what is live, selected, focused, or the next action. Never use it for decoration or status, and never add a second accent.",
+        "body": "Exchange blue is the only non-lamp hue. It marks what is live, primary, or focused. Never use it for decoration or status, and never add a second accent.",
         "section": "colors"
       },
       {
         "name": "The Ink Twin Rule",
-        "body": "Every lamp color has a fill and an ink. Fills are for shapes. Words use the ink. In light mode the green and amber fills fall below 4.5:1, so they must never carry text.",
+        "body": "Every lamp color has a fill and an ink. Fills are for shapes. Words use the ink. Light amber fill is 4.13:1, so lamp fills never carry text.",
+        "section": "colors"
+      },
+      {
+        "name": "The Grey Line Rule",
+        "body": "Grey (unlit) means nothing happened: not reached, no route, line inactive, disabled. Amber is only for work still in flight: pending, running, retrying, waiting to route. Red is only for failure.",
         "section": "colors"
       },
       {
         "name": "The Directory Rule",
-        "body": "Machine text is mono, human text is sans. Event types, IDs, codes, and payloads are always mono; names, labels, and explanations never are.",
+        "body": "Machine text is mono, human text is sans. Event types, IDs, codes, causes, and payloads are always mono; names, labels, and explanations never are.",
         "section": "typography"
       },
       {
         "name": "The Short Code Rule",
-        "body": "Uppercase three-letter codes (jack kinds, and the trace stages RCV, VER, RTE, DLV, ACT) are allowed only when the full name is also present as a title, an `abbr`, or screen-reader text.",
+        "body": "Uppercase short codes (jack kinds, and the trace stages RCV, VER, RTE, DLV, ACT) appear only where the full name is also present as a `title`, visible text, or screen-reader text.",
         "section": "typography"
       },
       {
+        "name": "The Single Line Rule",
+        "body": "At 768px and up, a list row is one line, 32px tall. If a fact doesn't fit, it gets condensed or it moves to the panel; the row never grows a second line. Below 768px a row may stack to two lines (trace, type, age; then line, outcome, action), and no more.",
+        "section": "layout"
+      },
+      {
+        "name": "The One Fact Rule",
+        "body": "Each column holds one fact: trace, type, line, outcome, age, action. Don't merge two facts into a cell, and don't put a sentence in a column.",
+        "section": "layout"
+      },
+      {
+        "name": "The Panel Rule",
+        "body": "Detail lives in the slide-over panel, never in the row. The full cause, exact UTC times, deliveries, actions, and payloads are panel content. The panel has its own URL (`#/events/<id>`, or `?event=<id>` on other pages) and is non-modal: the list stays live, and `j` and `k` move the panel to the next or previous call.",
+        "section": "layout"
+      },
+      {
         "name": "The Cell Rule",
-        "body": "If it is a control or a jack, it is one cell (32px) tall. Spacing comes only from the 4px scale.",
+        "body": "Controls are 28px, rows are 32px, and all spacing comes from the 4px scale.",
         "section": "layout"
       },
       {
         "name": "The Flat Frame Rule",
-        "body": "Nothing on the frame floats except a form you are filling in or a secret you must copy. Lists, rows, jacks, and buttons have no shadow.",
+        "body": "Nothing floats except the detail panel, a form you are filling in, a secret you must copy, or a confirm you must answer. Rows, jacks, and buttons have no shadow.",
         "section": "elevation"
       },
       {
         "name": "The Square Jack Rule",
-        "body": "Never round past 2px. Pills, round badges, and soft cards don't belong on the exchange.",
+        "body": "Never round past 4px. Pills, round badges, and soft cards don't belong on the exchange.",
         "section": "shapes"
       }
     ],
     "dos": [
-      "**Do** keep exchange blue as the only accent, and use it for every live, selected, focused, or primary state.",
-      "**Do** pair every lamp with its text in a tooltip, visible text, or an accessible label, and use the `-ink` colors for status words.",
-      "**Do** set event types, IDs, codes, and payloads in mono, and everything else in Atkinson Hyperlegible Next.",
-      "**Do** size controls and jacks to the 32px cell and space on the 4px grid.",
-      "**Do** show list data as rows between hairline rules, with the failure cause inline and the fix (Replay) at the row end.",
-      "**Do** draw routes as patch cords, live in accent and idle as dashed edge, and collapse them to an indented tree below 640px.",
+      "**Do** keep exchange blue as the only accent, and use it for every live, primary, or focused state.",
+      "**Do** keep list rows to one 32px line at 768px and up, with one fact per column.",
+      "**Do** condense causes in the row (`ECONNREFUSED :4555`, `HTTP 503`) and put the full text in a `title` and the panel.",
+      "**Do** put detail in the slide-over panel, give it a deep link, and keep `j`, `k`, Enter, Esc, and `/` working on every list that opens it.",
+      "**Do** show selection with the selection fill, and keep the focus ring for keyboard focus.",
+      "**Do** use grey lamps for \"nothing happened\" and amber only for work in flight.",
+      "**Do** pair every lamp with its words, and use the `-ink` colors for status text.",
+      "**Do** set event types, IDs, codes, causes, and payloads in mono, and everything else in Inter.",
+      "**Do** size controls to 28px and rows to 32px, and space on the 4px grid.",
+      "**Do** draw routes as patch cords, live in accent and idle as dashed edge, and collapse them to an indented tree in narrow containers.",
       "**Do** confirm destructive or outward actions in place, and announce the result.",
       "**Do** design every screen for both themes and check contrast in each against WCAG 2.2 AA.",
       "**Do** keep every route free of horizontal scroll at 375px.",
@@ -928,9 +1132,12 @@
       "**Don't** load fonts, scripts, or styles from another origin. Fonts are self-hosted only.",
       "**Don't** render event text or payloads as HTML. Untrusted text renders as text; no `dangerouslySetInnerHTML` or `innerHTML`.",
       "**Don't** show a secret twice. Secrets appear once, in the secret box, at create or rotate.",
-      "**Don't** use lamp colors for decoration or put words in a lamp fill color.",
+      "**Don't** let a list row grow a second line at desktop width, or put a sentence, a payload, or a full error in a row.",
+      "**Don't** let a fill, a hairline, or a `line` border be the only sign of a control or its state.",
+      "**Don't** use amber for \"no route\" or \"not reached\", or use lamp colors for decoration.",
+      "**Don't** put words in a lamp fill color.",
       "**Don't** wrap list data in padded cards or build KPI tiles.",
-      "**Don't** add shadows to rows, jacks, or buttons, or round corners past 2px.",
+      "**Don't** add shadows to rows, jacks, or buttons, or round corners past 4px.",
       "**Don't** add a second accent hue."
     ]
   }

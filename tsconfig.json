@@ -15,5 +15,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["apps/server/src", "apps/server/test", "apps/worker/src", "apps/worker/test", "packages/*/src", "packages/*/test", "packages/*/*.ts", "packages/providers/*/src", "packages/providers/*/test", "packages/destinations/*/src", "packages/destinations/*/test", "vitest.config.ts", "test"]
+  "include": ["apps/server/src", "apps/server/test", "apps/worker/src", "apps/worker/test", "apps/console/test", "packages/*/src", "packages/*/test", "packages/*/*.ts", "packages/providers/*/src", "packages/providers/*/test", "packages/destinations/*/src", "packages/destinations/*/test", "vitest.config.ts", "test"]
 }
