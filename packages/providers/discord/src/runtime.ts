@@ -31,8 +31,8 @@ const ERROR_CODES: Record<number, string> = {
 
 export interface DiscordRuntimeDeps {
   db: Db
-  /** App-level bot token. Without it every action fails with no_credentials. */
-  botToken?: string | undefined
+  /** Reads the app-level bot token on each call, so a saved change applies without a restart. Without one every action fails with no_credentials. */
+  botToken: () => Promise<string | undefined>
   apiBase?: string | undefined
   fetch?: typeof fetch
 }
@@ -64,16 +64,25 @@ function retryAfterMs(res: Response, body: unknown): number | null {
 
 export function createDiscordRuntime(deps: DiscordRuntimeDeps): ProviderRuntime {
   const apiBase = (deps.apiBase ?? DEFAULT_DISCORD_API_BASE_URL).replace(/\/+$/, '')
-  let botUserId: Promise<string | null> | null = null
+  let botUser: { token: string; id: Promise<string | null> } | null = null
 
-  async function call(doFetch: typeof fetch, method: 'GET' | 'POST' | 'PUT' | 'PATCH', path: string, body?: unknown): Promise<unknown> {
-    if (!deps.botToken) throw new ActionError('no_credentials', false)
+  async function readToken(): Promise<string | undefined> {
+    try {
+      return await deps.botToken()
+    } catch {
+      throw new ActionError('credentials_unavailable', true)
+    }
+  }
+
+  async function call(doFetch: typeof fetch, method: 'GET' | 'POST' | 'PUT' | 'PATCH', path: string, body?: unknown, withToken?: string): Promise<unknown> {
+    const token = withToken ?? (await readToken())
+    if (!token) throw new ActionError('no_credentials', false)
     let res: Response
     try {
       res = await doFetch(`${apiBase}${path}`, {
         method,
         headers: {
-          authorization: `Bot ${deps.botToken}`,
+          authorization: `Bot ${token}`,
           'user-agent': DISCORD_USER_AGENT,
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
@@ -188,17 +197,23 @@ export function createDiscordRuntime(deps: DiscordRuntimeDeps): ProviderRuntime 
     async isSelfEcho(envelope, connection) {
       const { channelId, messageId } = envelope.context
       if (channelId && messageId && (await hasSentMessage(deps.db, connection.id, channelId, messageId))) return true
-      if (!deps.botToken || envelope.actor === null) return false
-      botUserId ??= call(deps.fetch ?? fetch, 'GET', '/users/@me')
-        .then((u) => {
-          const id = u && typeof u === 'object' ? (u as { id?: unknown }).id : undefined
-          return typeof id === 'string' ? id : null
-        })
-        .catch(() => {
-          botUserId = null
-          return null
-        })
-      return envelope.actor === (await botUserId)
+      if (envelope.actor === null) return false
+      const token = await deps.botToken().catch(() => undefined)
+      if (!token) return false
+      if (botUser?.token !== token) {
+        const entry: { token: string; id: Promise<string | null> } = { token, id: Promise.resolve(null) }
+        entry.id = call(deps.fetch ?? fetch, 'GET', '/users/@me', undefined, token)
+          .then((u) => {
+            const id = u && typeof u === 'object' ? (u as { id?: unknown }).id : undefined
+            return typeof id === 'string' ? id : null
+          })
+          .catch(() => {
+            if (botUser === entry) botUser = null
+            return null
+          })
+        botUser = entry
+      }
+      return envelope.actor === (await botUser.id)
     },
   }
 }

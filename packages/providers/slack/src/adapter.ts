@@ -10,9 +10,12 @@ import { eventCallbackSchema, urlVerificationSchema, type EventCallback } from '
 import { verifySlackSignature } from './signature'
 
 export interface SlackAdapterDeps {
-  signingSecret: string
+  /** Secrets accepted right now: the current one first, then the previous one until it expires. */
+  signingSecrets: () => Promise<readonly string[]>
   connections: ConnectionStore
   nowSeconds?: () => number
+  /** Called after a good signature, with the index of the secret that matched. */
+  onVerified?: (secretIndex: number) => void
 }
 
 function parseCallback(payload: unknown): EventCallback {
@@ -29,13 +32,14 @@ export function createSlackAdapter(deps: SlackAdapterDeps): ProviderAdapter {
     oauth: { authorizeUrl: SLACK_AUTHORIZE_URL, userScopes: SLACK_USER_SCOPES },
 
     async verify(req, rawBody) {
-      verifySlackSignature({
-        signingSecret: deps.signingSecret,
+      const index = verifySlackSignature({
+        signingSecrets: await deps.signingSecrets(),
         timestamp: req.headers.get('x-slack-request-timestamp'),
         signature: req.headers.get('x-slack-signature'),
         rawBody,
         nowSeconds: nowSeconds(),
       })
+      deps.onVerified?.(index)
     },
 
     handshake({ payload }: IngressInput) {
