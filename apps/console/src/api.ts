@@ -106,20 +106,43 @@ export interface AgentConfig {
   maxTurns: number
   timeoutSeconds: number
   maxMutatingActions: number
+  toolDestinationIds?: string[]
 }
 
-export interface Destination {
+export interface ToolConfig {
+  toolName: string
+  description: string
+  params: unknown
+  mutating: boolean
+  sensitive: boolean
+  maxResponseBytes: number
+}
+
+interface DestinationBase {
   id: string
   name: string
-  kind: 'http' | 'agent'
   url: string | null
   enabled: boolean
   maxAttempts: number
   timeoutMs: number
   allowedActions: string[] | null
-  config: AgentConfig | null
   routeCount?: number
   createdAt: string
+}
+
+export type Destination =
+  | (DestinationBase & { kind: 'http'; config: null })
+  | (DestinationBase & { kind: 'agent'; config: AgentConfig })
+  | (DestinationBase & { kind: 'tool'; config: ToolConfig })
+
+export interface ToolCall {
+  n: number
+  type: string
+  status: string
+  error?: string
+  destinationId?: string
+  params?: unknown
+  result?: unknown
 }
 
 export interface Route {
@@ -210,7 +233,7 @@ export interface DeliveryRow {
   lastReplyJti: string | null
   routeName: string
   destinationName: string
-  destinationKind?: 'http' | 'agent'
+  destinationKind?: 'http' | 'agent' | 'tool'
   eventType?: string
 }
 
@@ -234,6 +257,7 @@ export interface AgentRunRow {
   error: string | null
   startedAt: string
   finishedAt: string | null
+  toolCalls?: ToolCall[]
   [key: string]: unknown
 }
 

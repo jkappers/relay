@@ -413,6 +413,18 @@ function EventBody({ e, connections, onChange, decision }: { e: EventDetail; con
                   <Time iso={r.startedAt} className="ml-auto text-ink-3" />
                 </div>
                 {r.error ? <p className="break-words text-bad-ink">{r.error}</p> : null}
+                {r.toolCalls?.length ? (
+                  <ol aria-label="Tool calls" className="flex flex-col gap-0.5 pl-1 text-xs">
+                    {r.toolCalls.map((t) => (
+                      <li key={t.n} className="flex flex-wrap items-center gap-x-2">
+                        <span className="w-5 text-right text-ink-3">{t.n}</span>
+                        <span className="font-mono">{t.type}</span>
+                        <StatusMark value={t.status} />
+                        {t.error ? <span className="break-words text-bad-ink">{t.error}</span> : null}
+                      </li>
+                    ))}
+                  </ol>
+                ) : null}
               </li>
             ))}
           </ul>

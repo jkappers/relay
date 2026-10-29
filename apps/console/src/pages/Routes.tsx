@@ -333,7 +333,7 @@ function RouteEditor({
               Create a destination first. <a href={hrefTo('/destinations')}>Go to destinations</a>
             </p>
           ) : null}
-          {destinations.map((d) => (
+          {destinations.filter((d) => d.kind !== 'tool').map((d) => (
             <Check
               key={d.id}
               checked={f.destinationIds.includes(d.id)}
