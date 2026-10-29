@@ -11,7 +11,7 @@ export interface PatchTarget {
   lamp?: { state: LampState; text: string }
 }
 
-const CODES: Record<string, string> = { slack: 'slk', webhook: 'whk', http: 'http', agent: 'agt', any: 'any' }
+const CODES: Record<string, string> = { slack: 'slk', webhook: 'whk', sms: 'sms', http: 'http', agent: 'agt', any: 'any' }
 
 export const jackCode = (kind: string) => CODES[kind] ?? kind.slice(0, 3)
 

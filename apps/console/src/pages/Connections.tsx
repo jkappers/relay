@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { CONNECTIONS_CHANGED_EVENT, get, post, type Connection, type WebhookCreated } from '../api'
+import { CONNECTIONS_CHANGED_EVENT, get, post, type Connection, type SmsCreated, type WebhookCreated } from '../api'
 import { Async, ConfirmButton, CopyId, cx, Empty, Field, FormError, Page, SecretBox, SkeletonRows, Time } from '../components'
 import { errorText, useLoad } from '../hooks'
 import { Icon } from '../icons'
@@ -63,15 +63,101 @@ export function WebhookSecret({ created, onDismiss }: { created: WebhookCreated;
   )
 }
 
-const COLS = 'grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 px-3 md:grid-cols-[minmax(0,10rem)_6rem_minmax(0,9rem)_minmax(0,1fr)_6rem_minmax(0,auto)]'
+export function NewSms({ onCreated, onCancel }: { onCreated: (c: SmsCreated) => void; onCancel?: () => void }) {
+  const [name, setName] = useState('')
+  const [accountSid, setAccountSid] = useState('')
+  const [number, setNumber] = useState('')
+  const [authToken, setAuthToken] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      onCreated(
+        await post<SmsCreated>('/api/connections/sms', {
+          ...(name.trim() ? { name: name.trim() } : {}),
+          accountSid: accountSid.trim(),
+          number: number.trim(),
+          authToken: authToken.trim(),
+        }),
+      )
+      setAuthToken('')
+    } catch (err) {
+      setError(errorText(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} aria-label="New SMS connection" className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="Name" hint="Optional. Shown in the connection switcher." className="min-w-48 flex-1">
+          {(p) => <input {...p} className="input" maxLength={100} placeholder="Support line" value={name} onChange={(e) => setName(e.target.value)} />}
+        </Field>
+        <Field label="Twilio number" hint="E.164, e.g. +15551234567." className="min-w-48 flex-1">
+          {(p) => <input {...p} required className="input font-mono" placeholder="+15551234567" value={number} onChange={(e) => setNumber(e.target.value)} />}
+        </Field>
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="Account SID" className="min-w-48 flex-1">
+          {(p) => <input {...p} required className="input font-mono" placeholder="AC…" value={accountSid} onChange={(e) => setAccountSid(e.target.value)} />}
+        </Field>
+        <Field label="Auth token" hint="Stored encrypted. Signs inbound requests and sends replies." className="min-w-48 flex-1">
+          {(p) => (
+            <input {...p} required type="password" autoComplete="off" className="input font-mono" value={authToken} onChange={(e) => setAuthToken(e.target.value)} />
+          )}
+        </Field>
+      </div>
+      <div className="flex gap-2">
+        <button className="btn btn-primary" disabled={busy}>
+          <Icon name="plus" className="size-3.5" />
+          {busy ? 'Creating…' : 'Create SMS connection'}
+        </button>
+        {onCancel ? (
+          <button type="button" className="btn" onClick={onCancel}>
+            Cancel
+          </button>
+        ) : null}
+      </div>
+      <FormError error={error} />
+    </form>
+  )
+}
+
+export function SmsWebhookUrl({ created, onDismiss }: { created: SmsCreated; onDismiss: () => void }) {
+  return (
+    <section role="status" aria-label="SMS webhook URL" className="rounded-ctl border border-accent bg-raised p-3 shadow-panel">
+      <h2 className="font-semibold">Point Twilio at this URL</h2>
+      <p className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-ink-2">
+        <CopyId value={created.url} label="SMS webhook URL" />
+      </p>
+      <p className="mt-1 text-ink-2">In the Twilio console, set “A message comes in” to this URL with HTTP POST.</p>
+      <button type="button" className="btn mt-2" onClick={onDismiss}>
+        Done
+      </button>
+    </section>
+  )
+}
+
+const COLS ='grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 px-3 md:grid-cols-[minmax(0,10rem)_6rem_minmax(0,9rem)_minmax(0,1fr)_6rem_minmax(0,auto)]'
 
 export function Connections() {
   const state = useLoad(() => get<{ items: Connection[] }>('/api/connections'), [])
   const [created, setCreated] = useState<WebhookCreated | null>(null)
+  const [createdSms, setCreatedSms] = useState<SmsCreated | null>(null)
   const [adding, setAdding] = useState(false)
+  const [addingSms, setAddingSms] = useState(false)
 
   const actions = (
     <>
+      <button type="button" className="btn btn-sm" disabled={addingSms} onClick={() => setAddingSms(true)}>
+        <Icon name="plus" className="size-3.5" />
+        New SMS
+      </button>
       <a className="btn btn-sm" href="/oauth/slack/start">
         <Icon name="external" className="size-3.5" />
         Connect Slack
@@ -98,7 +184,21 @@ export function Connections() {
           />
         </div>
       ) : null}
+      {addingSms ? (
+        <div className="rounded-ctl border border-line bg-raised p-4 shadow-panel">
+          <NewSms
+            onCancel={() => setAddingSms(false)}
+            onCreated={(c) => {
+              setAddingSms(false)
+              setCreatedSms(c)
+              state.reload()
+              connectionsChanged()
+            }}
+          />
+        </div>
+      ) : null}
       {created ? <WebhookSecret created={created} onDismiss={() => setCreated(null)} /> : null}
+      {createdSms ? <SmsWebhookUrl created={createdSms} onDismiss={() => setCreatedSms(null)} /> : null}
       <Async
         state={state}
         skeleton={<SkeletonRows rows={4} />}

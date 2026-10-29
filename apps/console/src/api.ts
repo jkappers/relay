@@ -88,6 +88,10 @@ export interface WebhookCreated extends Omit<Connection, 'role' | 'teamId' | 'us
   secret: string
 }
 
+export interface SmsCreated extends Omit<Connection, 'role' | 'teamId' | 'userId'> {
+  url: string
+}
+
 export interface AgentConfig {
   systemPrompt: string
   model: string
