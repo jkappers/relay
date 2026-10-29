@@ -24,11 +24,56 @@ export const connections = pgTable(
     provider: text('provider').notNull(),
     teamId: text('team_id'),
     userId: text('user_id'),
+    name: text('name'),
     status: connectionStatus('status').notNull().default('active'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('connections_provider_team_user_uq').on(t.provider, t.teamId, t.userId)],
+)
+
+export const users = pgTable(
+  'users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    email: text('email').notNull(),
+    passwordHash: text('password_hash').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('users_email_uq').on(sql`lower(${t.email})`)],
+)
+
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('sessions_user_idx').on(t.userId)],
+)
+
+export const memberRole = pgEnum('member_role', ['owner'])
+
+export const connectionMembers = pgTable(
+  'connection_members',
+  {
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => connections.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: memberRole('role').notNull().default('owner'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.connectionId, t.userId] }), index('connection_members_user_idx').on(t.userId)],
 )
 
 export const credentialKind = pgEnum('credential_kind', ['slack_user_token', 'webhook_secret'])
@@ -76,6 +121,9 @@ export const destinations = pgTable(
   'destinations',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => connections.id),
     name: text('name').notNull(),
     kind: destinationKind('kind').notNull().default('http'),
     url: text('url'),
@@ -89,22 +137,29 @@ export const destinations = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    index('destinations_connection_idx').on(t.connectionId),
     check('destinations_http_needs_url_and_secret', sql`${t.kind} <> 'http' or (${t.url} is not null and ${t.secretCiphertext} is not null)`),
   ],
 )
 
-export const routes = pgTable('routes', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: text('name').notNull(),
-  connectionId: uuid('connection_id').references(() => connections.id),
-  eventType: text('event_type').notNull(),
-  textContains: text('text_contains'),
-  textRegex: text('text_regex'),
-  includeSubtypes: boolean('include_subtypes').notNull().default(false),
-  enabled: boolean('enabled').notNull().default(true),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-})
+export const routes = pgTable(
+  'routes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    name: text('name').notNull(),
+    connectionId: uuid('connection_id')
+      .notNull()
+      .references(() => connections.id),
+    eventType: text('event_type').notNull(),
+    textContains: text('text_contains'),
+    textRegex: text('text_regex'),
+    includeSubtypes: boolean('include_subtypes').notNull().default(false),
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('routes_connection_idx').on(t.connectionId)],
+)
 
 export const routeDestinations = pgTable(
   'route_destinations',
@@ -218,6 +273,7 @@ export const revokedTokens = pgTable('revoked_tokens', {
   revokedAt: timestamp('revoked_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+export type UserRow = typeof users.$inferSelect
 export type ConnectionRow = typeof connections.$inferSelect
 export type EventRow = typeof events.$inferSelect
 export type CredentialKind = (typeof credentialKind.enumValues)[number]

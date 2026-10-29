@@ -9,14 +9,19 @@ export const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL ?? 'postgres://re
 export const TEST_MASTER_KEY = new Uint8Array(32).fill(7)
 
 export async function resetDb(db: Db): Promise<void> {
-  await db.execute(sql`truncate table agent_runs, revoked_tokens, sent_messages, actions_log, deliveries, route_destinations, routes, destinations, events, credentials, connections cascade`)
+  await db.execute(sql`truncate table sessions, connection_members, users, agent_runs, revoked_tokens, sent_messages, actions_log, deliveries, route_destinations, routes, destinations, events, credentials, connections cascade`)
   await db.execute(sql`do $$ begin if to_regclass('pgboss.job') is not null then delete from pgboss.job; end if; end $$`)
 }
 
-export async function dropQueueSchema(url: string): Promise<void> {
+/** Drops every table so each test run migrates the test database from zero. */
+export async function dropAllSchemas(url: string): Promise<void> {
+  if (!/\/relay_test(\?|$)/.test(url) && !process.env.TEST_DATABASE_URL) throw new Error(`refusing to drop schemas outside relay_test: ${url}`)
   const { db, close } = createDb(url, { max: 1 })
   try {
     await db.execute(sql`drop schema if exists pgboss cascade`)
+    await db.execute(sql`drop schema if exists drizzle cascade`)
+    await db.execute(sql`drop schema if exists public cascade`)
+    await db.execute(sql`create schema public`)
   } finally {
     await close()
   }

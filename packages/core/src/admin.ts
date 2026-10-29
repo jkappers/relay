@@ -35,11 +35,11 @@ export const createAgentDestinationInput = z.object({
 })
 export type CreateAgentDestinationInput = z.input<typeof createAgentDestinationInput>
 
-export async function createAgentDestination(db: Db, input: CreateAgentDestinationInput): Promise<DestinationRow> {
+export async function createAgentDestination(db: Db, connectionId: string, input: CreateAgentDestinationInput): Promise<DestinationRow> {
   const parsed = createAgentDestinationInput.parse(input)
   const [destination] = await db
     .insert(destinations)
-    .values({ name: parsed.name, kind: 'agent', config: parsed.config, allowedActions: parsed.allowedActions })
+    .values({ connectionId, name: parsed.name, kind: 'agent', config: parsed.config, allowedActions: parsed.allowedActions })
     .returning()
   return destination!
 }
@@ -47,6 +47,7 @@ export async function createAgentDestination(db: Db, input: CreateAgentDestinati
 export async function createDestination(
   db: Db,
   cipher: Cipher,
+  connectionId: string,
   input: CreateDestinationInput,
 ): Promise<{ destination: DestinationRow; secret: string }> {
   const parsed = createDestinationInput.parse(input)
@@ -54,6 +55,7 @@ export async function createDestination(
   const [destination] = await db
     .insert(destinations)
     .values({
+      connectionId,
       name: parsed.name,
       url: parsed.url,
       maxAttempts: parsed.maxAttempts,
@@ -69,7 +71,6 @@ export const createRouteInput = z.object({
   name: z.string().min(1),
   eventType: z.string().min(1),
   destinationIds: z.array(z.uuid()).min(1),
-  connectionId: z.uuid().nullable().default(null),
   textContains: z.string().min(1).nullable().default(null),
   textRegex: z
     .string()
@@ -86,26 +87,25 @@ export const createRouteInput = z.object({
 })
 export type CreateRouteInput = z.input<typeof createRouteInput>
 
-async function assertRouteRefs(db: Pick<Db, 'select'>, destinationIds: string[], connectionId: string | null) {
+async function assertRouteRefs(db: Pick<Db, 'select'>, connectionId: string, destinationIds: string[]) {
   const unique = [...new Set(destinationIds)]
-  const found = await db.select({ id: destinations.id }).from(destinations).where(inArray(destinations.id, unique))
+  const found = await db
+    .select({ id: destinations.id })
+    .from(destinations)
+    .where(and(inArray(destinations.id, unique), eq(destinations.connectionId, connectionId)))
   if (found.length !== unique.length) throw new AdminError('unknown destination id', 'invalid')
-  if (connectionId !== null) {
-    const [conn] = await db.select({ id: connections.id }).from(connections).where(eq(connections.id, connectionId))
-    if (!conn) throw new AdminError('unknown connection id', 'invalid')
-  }
 }
 
-export async function createRoute(db: Db, input: CreateRouteInput): Promise<RouteRow> {
+export async function createRoute(db: Db, connectionId: string, input: CreateRouteInput): Promise<RouteRow> {
   const parsed = createRouteInput.parse(input)
-  await assertRouteRefs(db, parsed.destinationIds, parsed.connectionId)
+  await assertRouteRefs(db, connectionId, parsed.destinationIds)
   return db.transaction(async (tx) => {
     const [route] = await tx
       .insert(routes)
       .values({
         name: parsed.name,
         eventType: parsed.eventType,
-        connectionId: parsed.connectionId,
+        connectionId,
         textContains: parsed.textContains,
         textRegex: parsed.textRegex,
         includeSubtypes: parsed.includeSubtypes,
@@ -119,23 +119,22 @@ export async function createRoute(db: Db, input: CreateRouteInput): Promise<Rout
   })
 }
 
-export async function updateRoute(db: Db, id: string, input: CreateRouteInput): Promise<RouteRow> {
+export async function updateRoute(db: Db, connectionId: string, id: string, input: CreateRouteInput): Promise<RouteRow> {
   const parsed = createRouteInput.parse(input)
-  await assertRouteRefs(db, parsed.destinationIds, parsed.connectionId)
+  await assertRouteRefs(db, connectionId, parsed.destinationIds)
   return db.transaction(async (tx) => {
     const [route] = await tx
       .update(routes)
       .set({
         name: parsed.name,
         eventType: parsed.eventType,
-        connectionId: parsed.connectionId,
         textContains: parsed.textContains,
         textRegex: parsed.textRegex,
         includeSubtypes: parsed.includeSubtypes,
         enabled: parsed.enabled,
         updatedAt: new Date(),
       })
-      .where(eq(routes.id, id))
+      .where(and(eq(routes.id, id), eq(routes.connectionId, connectionId)))
       .returning()
     if (!route) throw new AdminError('route not found', 'not_found')
     await tx.delete(routeDestinations).where(eq(routeDestinations.routeId, id))
@@ -146,15 +145,22 @@ export async function updateRoute(db: Db, id: string, input: CreateRouteInput): 
   })
 }
 
-export async function setRouteEnabled(db: Db, id: string, enabled: boolean): Promise<RouteRow> {
-  const [route] = await db.update(routes).set({ enabled, updatedAt: new Date() }).where(eq(routes.id, id)).returning()
+export async function setRouteEnabled(db: Db, connectionId: string, id: string, enabled: boolean): Promise<RouteRow> {
+  const [route] = await db
+    .update(routes)
+    .set({ enabled, updatedAt: new Date() })
+    .where(and(eq(routes.id, id), eq(routes.connectionId, connectionId)))
+    .returning()
   if (!route) throw new AdminError('route not found', 'not_found')
   return route
 }
 
-export async function deleteRoute(db: Db, id: string): Promise<void> {
+export async function deleteRoute(db: Db, connectionId: string, id: string): Promise<void> {
   await db.transaction(async (tx) => {
-    const [row] = await tx.select({ id: routes.id }).from(routes).where(eq(routes.id, id))
+    const [row] = await tx
+      .select({ id: routes.id })
+      .from(routes)
+      .where(and(eq(routes.id, id), eq(routes.connectionId, connectionId)))
     if (!row) throw new AdminError('route not found', 'not_found')
     const [{ n } = { n: 0 }] = await tx.select({ n: count() }).from(deliveries).where(eq(deliveries.routeId, id))
     if (n > 0) throw new AdminError('route has deliveries; disable it instead', 'conflict')
@@ -192,8 +198,9 @@ export const updateAgentDestinationInput = z
   })
   .strict()
 
-export async function updateDestination(db: Db, id: string, input: unknown): Promise<DestinationRow> {
-  const [existing] = await db.select().from(destinations).where(eq(destinations.id, id))
+export async function updateDestination(db: Db, connectionId: string, id: string, input: unknown): Promise<DestinationRow> {
+  const inTenant = and(eq(destinations.id, id), eq(destinations.connectionId, connectionId))
+  const [existing] = await db.select().from(destinations).where(inTenant)
   if (!existing) throw new AdminError('destination not found', 'not_found')
   const set: Partial<typeof destinations.$inferInsert> = { updatedAt: new Date() }
   if (existing.kind === 'http') {
@@ -218,13 +225,17 @@ export async function updateDestination(db: Db, id: string, input: unknown): Pro
       set.config = merged
     }
   }
-  const [row] = await db.update(destinations).set(set).where(eq(destinations.id, id)).returning()
-  return row!
+  const [row] = await db.update(destinations).set(set).where(inTenant).returning()
+  if (!row) throw new AdminError('destination not found', 'not_found')
+  return row
 }
 
-export async function deleteDestination(db: Db, id: string): Promise<void> {
+export async function deleteDestination(db: Db, connectionId: string, id: string): Promise<void> {
   await db.transaction(async (tx) => {
-    const [row] = await tx.select({ id: destinations.id }).from(destinations).where(eq(destinations.id, id))
+    const [row] = await tx
+      .select({ id: destinations.id })
+      .from(destinations)
+      .where(and(eq(destinations.id, id), eq(destinations.connectionId, connectionId)))
     if (!row) throw new AdminError('destination not found', 'not_found')
     const [{ n: linked } = { n: 0 }] = await tx
       .select({ n: count() })
@@ -237,15 +248,16 @@ export async function deleteDestination(db: Db, id: string): Promise<void> {
   })
 }
 
-export async function rotateDestinationSecret(db: Db, cipher: Cipher, id: string): Promise<string> {
-  const [existing] = await db.select({ kind: destinations.kind }).from(destinations).where(eq(destinations.id, id))
+export async function rotateDestinationSecret(db: Db, cipher: Cipher, connectionId: string, id: string): Promise<string> {
+  const inTenant = and(eq(destinations.id, id), eq(destinations.connectionId, connectionId))
+  const [existing] = await db.select({ kind: destinations.kind }).from(destinations).where(inTenant)
   if (!existing) throw new AdminError('destination not found', 'not_found')
   if (existing.kind !== 'http') throw new AdminError('only http destinations have a signing secret', 'invalid')
   const secret = randomBytes(32).toString('hex')
   await db
     .update(destinations)
     .set({ secretCiphertext: cipher.encrypt(secret), updatedAt: new Date() })
-    .where(eq(destinations.id, id))
+    .where(inTenant)
   return secret
 }
 
@@ -277,8 +289,9 @@ export class ReplayError extends AdminError {
   }
 }
 
-export async function replayDelivery(db: Db, queue: Queue, deliveryId: string): Promise<void> {
+export async function replayDelivery(db: Db, queue: Queue, connectionId: string, deliveryId: string): Promise<void> {
   await db.transaction(async (tx) => {
+    const inTenant = tx.select({ id: events.id }).from(events).where(eq(events.connectionId, connectionId))
     const [row] = await tx
       .update(deliveries)
       .set({
@@ -291,15 +304,18 @@ export async function replayDelivery(db: Db, queue: Queue, deliveryId: string): 
         completedAt: null,
         updatedAt: new Date(),
       })
-      .where(and(eq(deliveries.id, deliveryId), eq(deliveries.status, 'failed')))
+      .where(and(eq(deliveries.id, deliveryId), eq(deliveries.status, 'failed'), inArray(deliveries.eventId, inTenant)))
       .returning({ id: deliveries.id })
     if (!row) throw new ReplayError('delivery not found or not in failed status')
     await queue.send<DispatchJob>(QUEUES.dispatch, { deliveryId }, { tx, singletonKey: deliveryId })
   })
 }
 
-export async function replayEvent(db: Db, queue: Queue, eventId: string): Promise<void> {
-  const [event] = await db.select({ id: events.id }).from(events).where(eq(events.id, eventId))
+export async function replayEvent(db: Db, queue: Queue, connectionId: string, eventId: string): Promise<void> {
+  const [event] = await db
+    .select({ id: events.id })
+    .from(events)
+    .where(and(eq(events.id, eventId), eq(events.connectionId, connectionId)))
   if (!event) throw new ReplayError('event not found', 'not_found')
   await queue.send<RouteJob>(QUEUES.route, { eventId }, { singletonKey: eventId })
 }

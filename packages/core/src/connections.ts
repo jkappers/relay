@@ -2,19 +2,37 @@ import { randomBytes } from 'node:crypto'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import type { Cipher } from './crypto'
 import type { Db } from './db/client'
-import { connections, credentials, type ConnectionRow, type CredentialKind } from './db/schema'
+import { connectionMembers, connections, credentials, type ConnectionRow, type CredentialKind } from './db/schema'
 import type { Connection } from './provider'
 
 const toConnection = (row: ConnectionRow): Connection => ({ ...row })
 
 export type Credentials = Partial<Record<CredentialKind, string>>
 
+/** The Slack identity already belongs to another Relay account. Nothing was stored. */
+export class ConnectionOwnedError extends Error {
+  override name = 'ConnectionOwnedError'
+}
+
+export interface ConnectionSummary {
+  id: string
+  name: string | null
+  provider: string
+  teamId: string | null
+  userId: string | null
+  status: Connection['status']
+  role: 'owner'
+  createdAt: Date
+}
+
 export interface ConnectionStore {
   findById(id: string): Promise<Connection | null>
   findSlack(teamId: string, userId: string): Promise<Connection | null>
-  upsertSlack(input: { teamId: string; userId: string; accessToken: string }): Promise<Connection>
+  /** `ownerUserId` null only for seeding without accounts. Otherwise throws ConnectionOwnedError if someone else owns it. */
+  upsertSlack(input: { teamId: string; userId: string; accessToken: string; ownerUserId: string | null }): Promise<Connection>
   revokeSlack(teamId: string, userIds: readonly string[]): Promise<number>
-  createWebhook(): Promise<{ connection: Connection; secret: string }>
+  createWebhook(input: { name?: string; ownerUserId: string | null }): Promise<{ connection: Connection; secret: string }>
+  listForUser(userId: string): Promise<ConnectionSummary[]>
   getCredentials(connectionId: string): Promise<Credentials>
   getWebhookSecret(connectionId: string): Promise<string | null>
 }
@@ -52,19 +70,35 @@ export function createConnectionStore(db: Db, cipher: Cipher): ConnectionStore {
       return row ? toConnection(row) : null
     },
 
-    async upsertSlack({ teamId, userId, accessToken }) {
+    async upsertSlack({ teamId, userId, accessToken, ownerUserId }) {
       return db.transaction(async (tx) => {
-        const [row] = await tx
+        await tx
           .insert(connections)
-          .values({ provider: 'slack', teamId, userId, status: 'active' })
-          .onConflictDoUpdate({
-            target: [connections.provider, connections.teamId, connections.userId],
-            set: { status: 'active', updatedAt: sql`now()` },
-          })
+          .values({ provider: 'slack', teamId, userId, name: `Slack ${teamId}/${userId}`, status: 'active' })
+          .onConflictDoNothing({ target: [connections.provider, connections.teamId, connections.userId] })
+        const [row] = await tx
+          .select()
+          .from(connections)
+          .where(and(eq(connections.provider, 'slack'), eq(connections.teamId, teamId), eq(connections.userId, userId)))
+          .for('update')
+        if (!row) throw new Error('upsert found no row')
+        if (ownerUserId !== null) {
+          const members = await tx
+            .select({ userId: connectionMembers.userId })
+            .from(connectionMembers)
+            .where(eq(connectionMembers.connectionId, row.id))
+          if (members.length > 0 && !members.some((m) => m.userId === ownerUserId)) {
+            throw new ConnectionOwnedError('this Slack identity is connected to another Relay account')
+          }
+          if (members.length === 0) await tx.insert(connectionMembers).values({ connectionId: row.id, userId: ownerUserId, role: 'owner' })
+        }
+        const [active] = await tx
+          .update(connections)
+          .set({ status: 'active', updatedAt: sql`now()` })
+          .where(eq(connections.id, row.id))
           .returning()
-        if (!row) throw new Error('upsert returned no row')
         await putCredential(tx, row.id, 'slack_user_token', accessToken)
-        return toConnection(row)
+        return toConnection(active!)
       })
     },
 
@@ -78,14 +112,36 @@ export function createConnectionStore(db: Db, cipher: Cipher): ConnectionStore {
       return rows.length
     },
 
-    async createWebhook() {
+    async createWebhook({ name, ownerUserId }) {
       const secret = randomBytes(32).toString('hex')
       return db.transaction(async (tx) => {
-        const [row] = await tx.insert(connections).values({ provider: 'webhook' }).returning()
+        const [row] = await tx
+          .insert(connections)
+          .values({ provider: 'webhook', name: name ?? 'Webhook' })
+          .returning()
         if (!row) throw new Error('insert returned no row')
+        if (ownerUserId !== null) await tx.insert(connectionMembers).values({ connectionId: row.id, userId: ownerUserId, role: 'owner' })
         await putCredential(tx, row.id, 'webhook_secret', secret)
         return { connection: toConnection(row), secret }
       })
+    },
+
+    async listForUser(userId) {
+      return db
+        .select({
+          id: connections.id,
+          name: connections.name,
+          provider: connections.provider,
+          teamId: connections.teamId,
+          userId: connections.userId,
+          status: connections.status,
+          role: connectionMembers.role,
+          createdAt: connections.createdAt,
+        })
+        .from(connectionMembers)
+        .innerJoin(connections, eq(connections.id, connectionMembers.connectionId))
+        .where(eq(connectionMembers.userId, userId))
+        .orderBy(connections.createdAt, connections.id)
     },
 
     getCredentials,

@@ -10,6 +10,7 @@ export interface Connection {
   provider: string
   teamId: string | null
   userId: string | null
+  name: string | null
   status: ConnectionStatus
   createdAt: Date
   updatedAt: Date

@@ -4,7 +4,7 @@ export const MAX_REGEX_LENGTH = 200
 
 export interface RouteMatchFields {
   enabled: boolean
-  connectionId: string | null
+  connectionId: string
   eventType: string
   textContains: string | null
   textRegex: string | null
@@ -29,7 +29,7 @@ function typeMatches(pattern: string, type: string): boolean {
 
 export function matchRoute(route: RouteMatchFields, envelope: MatchableEnvelope): boolean {
   if (!route.enabled) return false
-  if (route.connectionId !== null && route.connectionId !== envelope.connectionId) return false
+  if (route.connectionId !== envelope.connectionId) return false
   if (!typeMatches(route.eventType, envelope.type)) return false
   if (!route.includeSubtypes && envelope.subtype !== null) return false
   if (route.textContains !== null) {
