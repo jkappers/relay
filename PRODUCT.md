@@ -8,7 +8,7 @@ web
 
 ## Users
 
-Today, Relay has one user: its owner, who runs it for their own Slack and webhook traffic. The owner intends to offer it as a product, so future users are other technical people. They connect their own Slack accounts and services, and let Relay and its agents act on their behalf.
+Relay has user accounts. Its first user is its owner, who runs it for their own Slack and webhook traffic. The owner intends to offer it as a product, so other users are technical people. They sign in with their own account, connect their own Slack accounts and services, and let Relay and its agents act on their behalf. Each user sees only their own connections.
 
 These users open the console in three situations:
 - **Something broke.** A delivery failed, an agent run went wrong, or an event didn't route, and they need the cause fast.
@@ -41,8 +41,10 @@ The console has to show these guarantees as facts the user can check.
 ## Operating Context
 
 - **Deployment:** self-hosted on Node 24 with Postgres. The server and worker are separate processes. Slack reaches the server through a public URL, such as a tunnel.
-- **The console:** a single-page web app at the server root, protected by one owner password.
+- **The console:** a single-page web app at the server root. People sign in with an email and password. Sign-up is closed unless the operator opens it.
+- **Tenancy:** each connection is a tenant. Its routes, destinations, events, deliveries, actions, and agent runs belong to it alone. Users are members of connections (owner role only, for now). A new user's first step is adding a connection.
 - **What it covers:**
+  - accounts: sign in, optional sign-up, and a switcher between your connections
   - connections (Slack via OAuth, signed webhooks)
   - destinations (HTTP or agent)
   - routes, with a live match preview against recent events
@@ -61,7 +63,7 @@ The console has to show these guarantees as facts the user can check.
 - **Secrets** (webhook and destination signing secrets) are shown exactly once, when created or rotated.
 - **Stack:** React 19 + Vite. Styling moves to Tailwind CSS v4 as decided in the 2026-10-25 design pass. No UI kit, router library, or state library. Fonts must be self-hosted.
 - **Terminology:** connection, destination (`http` or `agent`), route, event, envelope, delivery, action, reply token, agent run, echo (skipped).
-- **Undecided:** product name and branding beyond "Relay", hosting and pricing model, and multi-user accounts (today it's one owner password).
+- **Undecided:** product name and branding beyond "Relay", hosting and pricing model, invites and roles beyond owner, and password reset by email (today the operator resets it with a CLI).
 
 ## Brand Commitments
 
@@ -73,8 +75,8 @@ The console has to show these guarantees as facts the user can check.
 ## Evidence on Hand
 
 - Real product behavior only:
-  - the test suite (243 tests)
-  - ADRs 0001–0005 in `docs/adr/`
+  - the test suite
+  - ADRs 0001–0007 in `docs/adr/`
   - metrics documented in `docs/metrics.md`
 - **None of these exist:** customers, testimonials, case studies, uptime records, benchmarks, or pricing. Never fabricate them.
 - Any demo data must be labeled as demo data.

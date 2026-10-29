@@ -1,8 +1,8 @@
 import { runMigrations } from '@relay/core'
-import { dropQueueSchema, TEST_DATABASE_URL } from '@relay/core/testing'
+import { dropAllSchemas, TEST_DATABASE_URL } from '@relay/core/testing'
 
 export default async function setup() {
-  // Queue policy is fixed at creation, so start each run with a fresh pg-boss schema.
-  await dropQueueSchema(TEST_DATABASE_URL)
+  // Migrate from zero each run: queue policy is fixed at creation, and the NOT NULL tenancy migration needs no leftover rows.
+  await dropAllSchemas(TEST_DATABASE_URL)
   await runMigrations(TEST_DATABASE_URL)
 }

@@ -1,6 +1,6 @@
 # ADR 0005: The console is a small Vite + React app served by the server
 
-Status: accepted (M5)
+Status: accepted (M5). The Auth section is replaced by ADR 0007 (accounts and server sessions).
 
 ## Decision
 

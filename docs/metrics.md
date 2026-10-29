@@ -10,6 +10,10 @@ Served at `GET /metrics` on the server (`PORT`) and on the worker (`WORKER_METRI
 | `relay_oauth_callbacks_total` | counter | `provider`, `outcome` | One per OAuth callback. |
 | `relay_actions_total` | counter | `provider`, `type`, `mode`, `outcome` | One per action handled by `POST /actions` (`mode="async"`). See below. |
 | `relay_reply_tokens_rejected_total` | counter | `reason` | One per `/actions` request rejected on its reply token. See below. |
+| `relay_console_logins_total` | counter | `outcome` | One per console sign-in attempt. See below. |
+| `relay_console_signups_total` | counter | `outcome` | One per `POST /api/users`. See below. |
+| `relay_tenant_denied_total` | counter | none | A signed-in user asked for a connection they are not a member of. Answered 404. |
+| `relay_console_mutations_total` | counter | `resource`, `action` | Console API changes that succeeded. See below. |
 
 Worker metrics:
 
@@ -24,6 +28,7 @@ Worker metrics:
 | `relay_agent_tokens_total` | counter | `kind` | Tokens used by agent runs. See below. |
 | `relay_agent_cost_usd_total` | counter | none | Estimated spend of agent runs in US dollars, as the SDK reports it. A float counter (the registry stores JS numbers), so there is no micro-dollar variant. It is an estimate, not a bill. |
 | `relay_actions_total` | counter | `provider`, `type`, `mode`, `outcome` | One per action handled by the `actions` job (`mode="sync"`). See below. |
+| `relay_cross_tenant_blocked_total` | counter | `stage` | A route link or delivery paired an event with a destination in another connection, and relay refused it. See below. |
 
 ## `relay_ingress_requests_total` outcomes
 
@@ -40,7 +45,7 @@ Worker metrics:
 
 ## `relay_oauth_callbacks_total` outcomes
 
-`success`, `bad_state`, `denied` (Slack sent `error` or no `code`), `exchange_failed`, `not_allowed` (the Slack user is not in `SLACK_ALLOWED_USER_IDS`; nothing stored, HTTP 403).
+`success`, `bad_state`, `denied` (Slack sent `error` or no `code`), `exchange_failed`, `not_allowed` (`SLACK_ALLOWED_USER_IDS` is set and the Slack user is not in it; nothing stored, HTTP 403), `owned_elsewhere` (another Relay account already owns this Slack identity; nothing stored, HTTP 409).
 
 ## `relay_router_events_total` outcomes
 
@@ -104,13 +109,37 @@ Worker metrics:
 
 ## `relay_console_logins_total`
 
-Console login attempts. Label `outcome`:
+Console sign-in attempts. Label `outcome`:
 
 | Outcome | Meaning |
 |---|---|
-| `success` | Right password. A session cookie was set. |
-| `bad_password` | Wrong password. Counts toward the throttle. |
+| `success` | Right email and password. A session was stored and its cookie set. |
+| `bad_credentials` | Unknown email or wrong password (one answer for both). Counts toward both limits. |
 | `throttled` | 5 failures from one IP in 15 minutes. Rejected with 429 before the password is checked. |
+| `rate_limited` | 10 failures for one email in 15 minutes, from any IP. Rejected with 429 before the password is checked. |
+| `busy` | 4 password checks were running and 64 more were waiting. Rejected with 503. |
+
+## `relay_console_signups_total`
+
+Label `outcome`:
+
+| Outcome | Meaning |
+|---|---|
+| `created` | New account. A session was started. |
+| `closed` | `SIGNUP_MODE` is `closed`. HTTP 403. |
+| `email_taken` | An account with that email exists. HTTP 409. |
+| `rate_limited` | 5 sign-ups from one IP in 15 minutes. HTTP 429. |
+| `busy` | Too many password hashes in flight. HTTP 503. |
+
+## `relay_cross_tenant_blocked_total` stages
+
+| Stage | Meaning |
+|---|---|
+| `router` | A matched route linked a destination in another connection. That link was skipped. Other links still deliver. |
+| `dispatch` | The dispatcher found a delivery whose destination is in another connection. Marked `failed` with `cross_tenant`. Nothing was sent and no reply token was made. |
+| `agent` | The agent handler found the same. Marked `failed` with `cross_tenant`. No run started. |
+
+All three should stay at 0. A non-zero count means a bad row from before accounts, or a bug.
 
 ## `relay_console_mutations_total`
 
