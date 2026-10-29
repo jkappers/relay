@@ -7,3 +7,10 @@ node_modules/
 coverage/
 .drift-check/
 apps/console/dist/
+
+# impeccable decision-page payloads (transient)
+.impeccable/decision/
+.impeccable/questions/
+
+# impeccable review screenshots (local only)
+.impeccable/review/

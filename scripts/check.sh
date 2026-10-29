@@ -29,6 +29,12 @@ if grep -rnE "dangerouslySetInnerHTML|innerHTML" apps/console/src apps/console/i
   exit 1
 fi
 
+step "no inline style attributes in the console"
+if grep -rnE "style=\{" apps/console/src apps/console/index.html; then
+  echo "inline style attributes are blocked by the CSP (style-src 'self')" >&2
+  exit 1
+fi
+
 step "migrations match schema"
 pnpm db:check
 
