@@ -1,6 +1,8 @@
 import { createActionCounters, MetricsRegistry } from '@relay/core'
 
-export const ROUTER_OUTCOMES = ['matched', 'unmatched', 'skipped_inactive', 'skipped_echo', 'echo_recheck'] as const
+export const ROUTER_OUTCOMES = ['matched', 'unmatched', 'skipped_inactive', 'skipped_echo', 'echo_recheck', 'classified_none'] as const
+export const CLASSIFIER_CALL_OUTCOMES = ['ok', 'timeout', 'error', 'refusal', 'invalid', 'reused', 'budget_exceeded'] as const
+export const CLASSIFIER_DECISION_RESULTS = ['selected', 'none', 'fallback_deliver', 'fallback_drop'] as const
 export const ATTEMPT_OUTCOMES = ['success', 'retry', 'failed_exhausted', 'failed_non_retryable'] as const
 
 export const AGENT_RUN_OUTCOMES = ['succeeded', 'failed', 'retried', 'not_retried_after_mutation'] as const
@@ -16,6 +18,17 @@ export function createWorkerMetrics(registry = new MetricsRegistry()) {
       'Events handled by the router, by outcome.',
       ['outcome'] as const,
     ),
+    classifierCalls: registry.counter(
+      'relay_classifier_calls_total',
+      'Classifier steps for events with gated routes, by outcome.',
+      ['outcome'] as const,
+    ),
+    classifierDecisions: registry.counter(
+      'relay_classifier_decisions_total',
+      'Stored classifier decisions, one per event, by mode and result.',
+      ['mode', 'result'] as const,
+    ),
+    classifierTokens: registry.counter('relay_classifier_tokens_total', 'Tokens used by classifier calls, by kind.', ['kind'] as const),
     deliveriesCreated: registry.counter('relay_deliveries_created_total', 'New delivery rows created by the router.'),
     sweeperRequeued: registry.counter(
       'relay_sweeper_requeued_total',

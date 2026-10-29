@@ -23,11 +23,16 @@ export const workerEnvSchema = coreEnvSchema
     AGENT_BACKOFF_BASE_MS: z.coerce.number().int().min(1).default(15_000),
     AGENT_BACKOFF_CAP_MS: z.coerce.number().int().min(1).default(300_000),
     RELAY_AGENT_RUNNER: z.enum(['sdk', 'fake']).default('sdk'),
+    RELAY_CLASSIFIER: z.enum(['anthropic', 'fake']).default('anthropic'),
     NODE_ENV: z.string().optional(),
   })
   .refine((c) => !(c.RELAY_AGENT_RUNNER === 'fake' && c.NODE_ENV === 'production'), {
     message: 'RELAY_AGENT_RUNNER=fake is for tests and is refused when NODE_ENV=production',
     path: ['RELAY_AGENT_RUNNER'],
+  })
+  .refine((c) => !(c.RELAY_CLASSIFIER === 'fake' && c.NODE_ENV === 'production'), {
+    message: 'RELAY_CLASSIFIER=fake is for tests and is refused when NODE_ENV=production',
+    path: ['RELAY_CLASSIFIER'],
   })
 
 export type WorkerConfig = z.infer<typeof workerEnvSchema>

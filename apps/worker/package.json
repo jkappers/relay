@@ -6,6 +6,7 @@
     "start": "node --env-file-if-exists=../../.env --import tsx src/main.ts"
   },
   "dependencies": {
+    "@relay/classifier": "workspace:*",
     "@relay/core": "workspace:*",
     "@relay/destination-agent": "workspace:*",
     "@relay/provider-discord": "workspace:*",

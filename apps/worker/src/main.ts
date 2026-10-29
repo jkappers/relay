@@ -1,4 +1,5 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
+import { createAnthropicClassifier, createDemoClassifier } from '@relay/classifier'
 import {
   ConfigError,
   createActionExecutor,
@@ -48,7 +49,8 @@ async function main() {
     sms: createSmsRuntime({ db, apiBase: config.SMS_API_BASE_URL }),
     discord: createDiscordRuntime({ db, botToken: config.DISCORD_BOT_TOKEN, apiBase: config.DISCORD_API_BASE_URL }),
   }
-  const route = createRouter({ db, queue, metrics, runtimes })
+  const classifier = config.RELAY_CLASSIFIER === 'fake' ? createDemoClassifier() : createAnthropicClassifier()
+  const route = createRouter({ db, queue, metrics, runtimes, classifier })
   const execute = createActionExecutor({
     db,
     connections: createConnectionStore(db, cipher),
@@ -111,6 +113,14 @@ async function main() {
   const [agentDest] = await db.select({ id: schema.destinations.id }).from(schema.destinations).where(eq(schema.destinations.kind, 'agent')).limit(1)
   if (config.RELAY_AGENT_RUNNER === 'fake') log.warn('worker: using the fake agent runner (tests only)')
   else if (agentDest && !process.env.ANTHROPIC_API_KEY) log.warn('worker: agent destinations exist but ANTHROPIC_API_KEY is not set; agent runs will fail')
+  const [gatedRoute] = await db
+    .select({ id: schema.routes.id })
+    .from(schema.routes)
+    .innerJoin(schema.connections, eq(schema.connections.id, schema.routes.connectionId))
+    .where(and(eq(schema.routes.selection, 'classifier'), ne(schema.connections.classifierMode, 'off')))
+    .limit(1)
+  if (config.RELAY_CLASSIFIER === 'fake') log.warn('worker: using the fake classifier (tests only)')
+  else if (gatedRoute && !process.env.ANTHROPIC_API_KEY) log.warn('worker: classifier routes exist but ANTHROPIC_API_KEY is not set; they will use their fallbacks')
   const sweep = createSweeper({ db, queue, metrics, graceMs: config.SWEEP_GRACE_SECONDS * 1000 })
   const runSweep = () => sweep().catch((err) => log.error('sweeper failed', { err: String(err) }))
   void runSweep()
