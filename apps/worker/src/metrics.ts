@@ -30,6 +30,11 @@ export function createWorkerMetrics(registry = new MetricsRegistry()) {
     ),
     agentTokens: registry.counter('relay_agent_tokens_total', 'Tokens used by agent runs, by kind.', ['kind'] as const),
     agentCostUsd: registry.counter('relay_agent_cost_usd_total', 'Estimated agent cost in US dollars, as reported by the SDK.'),
+    crossTenantBlocked: registry.counter(
+      'relay_cross_tenant_blocked_total',
+      'Deliveries refused because the destination belongs to another connection than the event.',
+      ['stage'] as const,
+    ),
     deliveryAttempts: registry.counter(
       'relay_delivery_attempts_total',
       'Delivery attempts by outcome.',

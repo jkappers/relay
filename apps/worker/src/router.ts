@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, or } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import {
   log,
   matchRoute,
@@ -66,12 +66,7 @@ export function createRouter(deps: RouterDeps) {
     const candidates = await db
       .select()
       .from(schema.routes)
-      .where(
-        and(
-          eq(schema.routes.enabled, true),
-          or(isNull(schema.routes.connectionId), eq(schema.routes.connectionId, event.connectionId)),
-        ),
-      )
+      .where(and(eq(schema.routes.enabled, true), eq(schema.routes.connectionId, event.connectionId)))
     const matched = candidates.filter((r) => matchRoute(r, envelope))
     if (matched.length === 0) {
       await markRouted(event.id)
@@ -79,8 +74,12 @@ export function createRouter(deps: RouterDeps) {
       return
     }
 
-    const links = await db
-      .select({ routeId: schema.routeDestinations.routeId, destinationId: schema.routeDestinations.destinationId })
+    const allLinks = await db
+      .select({
+        routeId: schema.routeDestinations.routeId,
+        destinationId: schema.routeDestinations.destinationId,
+        destinationConnectionId: schema.destinations.connectionId,
+      })
       .from(schema.routeDestinations)
       .innerJoin(schema.destinations, eq(schema.destinations.id, schema.routeDestinations.destinationId))
       .where(
@@ -92,6 +91,11 @@ export function createRouter(deps: RouterDeps) {
           eq(schema.destinations.enabled, true),
         ),
       )
+    const links = allLinks.filter((l) => l.destinationConnectionId === event.connectionId)
+    for (const l of allLinks.filter((x) => x.destinationConnectionId !== event.connectionId)) {
+      metrics.crossTenantBlocked.inc({ stage: 'router' })
+      log.warn('router: skipped a destination in another connection', { eventId: event.id, routeId: l.routeId, destinationId: l.destinationId })
+    }
 
     const created = await db.transaction(async (tx) => {
       await tx.update(schema.events).set({ routedAt: new Date() }).where(eq(schema.events.id, event.id))

@@ -149,6 +149,16 @@ export function createDispatcher(deps: DispatcherDeps) {
 
     const pending = and(eq(schema.deliveries.id, delivery.id), eq(schema.deliveries.status, 'pending'))
 
+    if (destination.connectionId !== event.connectionId) {
+      await db
+        .update(schema.deliveries)
+        .set({ status: 'failed', lastError: 'cross_tenant', completedAt: new Date(), nextAttemptAt: null, updatedAt: new Date() })
+        .where(pending)
+      metrics.crossTenantBlocked.inc({ stage: 'dispatch' })
+      log.warn('dispatcher: destination is in another connection', { deliveryId: delivery.id })
+      return
+    }
+
     if (!destination.enabled) {
       await db
         .update(schema.deliveries)

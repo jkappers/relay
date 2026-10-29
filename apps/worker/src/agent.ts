@@ -200,6 +200,11 @@ export function createAgentHandler(deps: AgentHandlerDeps) {
     }
     const { delivery, destination, event, connection } = row
     if (delivery.status !== 'pending' || destination.kind !== 'agent') return
+    if (destination.connectionId !== event.connectionId) {
+      metrics.crossTenantBlocked.inc({ stage: 'agent' })
+      log.warn('agent: destination is in another connection', { deliveryId: delivery.id })
+      return failDelivery(delivery.id, 'cross_tenant')
+    }
 
     if (!destination.enabled) return failDelivery(delivery.id, 'destination disabled')
     const parsed = agentConfigSchema.safeParse(destination.config)
