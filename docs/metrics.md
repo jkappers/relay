@@ -43,6 +43,10 @@ Worker metrics:
 | `invalid_body` | 400 | Signed body isn't JSON or isn't a valid event payload. |
 | `error` | 500 | Unexpected failure. Nothing is committed. |
 
+`provider` is `slack`, `webhook`, or `sms`. For `sms`, `bad_signature` means a missing or wrong `X-Twilio-Signature` (Twilio signs no timestamp, so there is no window check; replays are stopped by the `MessageSid` dedup key and show up as `duplicate`). `unknown_connection` also covers an `AccountSid` that doesn't match the connection. `handshake` and `lifecycle` never occur for `sms`.
+
+`relay_actions_total` and `relay_router_events_total` carry `provider="sms"` and `type="send"` for SMS actions and `skipped_echo` for messages from the connection's own number.
+
 ## `relay_oauth_callbacks_total` outcomes
 
 `success`, `bad_state`, `denied` (Slack sent `error` or no `code`), `exchange_failed`, `not_allowed` (`SLACK_ALLOWED_USER_IDS` is set and the Slack user is not in it; nothing stored, HTTP 403), `owned_elsewhere` (another Relay account already owns this Slack identity; nothing stored, HTTP 409).
@@ -54,7 +58,7 @@ Worker metrics:
 | `matched` | At least one route matched. Deliveries were created or already existed. |
 | `unmatched` | No route matched. |
 | `skipped_inactive` | The event's connection isn't `active`. |
-| `skipped_echo` | The provider says relay sent this message (Slack: its channel and ts are in `sent_messages`). Marked routed, no deliveries. |
+| `skipped_echo` | The provider says relay sent this message (Slack: its channel and ts are in `sent_messages`; SMS: the sender is the connection's own number). Marked routed, no deliveries. |
 | `echo_recheck` | The actor is the connection's own user, nothing matched `sent_messages` yet, and the event is under 30 s old. A `route` job with `recheck: true` was queued 5 s out. The event is not marked routed. |
 
 ## `relay_delivery_attempts_total` outcomes
@@ -147,7 +151,7 @@ Changes made through the console API that succeeded. Labels `resource` and `acti
 
 | Resource | Actions |
 |---|---|
-| `connection` | `create`, `revoke` |
+| `connection` | `create`, `revoke` (`create` covers webhook and SMS connections) |
 | `destination` | `create`, `update`, `delete`, `rotate_secret` |
 | `route` | `create`, `update`, `delete`, `enable`, `disable` |
 | `event` | `replay` |

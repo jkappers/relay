@@ -66,6 +66,9 @@ importers:
       '@relay/provider-slack':
         specifier: workspace:*
         version: link:../../packages/providers/slack
+      '@relay/provider-sms':
+        specifier: workspace:*
+        version: link:../../packages/providers/sms
       '@relay/provider-webhook':
         specifier: workspace:*
         version: link:../../packages/providers/webhook
@@ -90,6 +93,9 @@ importers:
       '@relay/provider-slack':
         specifier: workspace:*
         version: link:../../packages/providers/slack
+      '@relay/provider-sms':
+        specifier: workspace:*
+        version: link:../../packages/providers/sms
       '@relay/provider-webhook':
         specifier: workspace:*
         version: link:../../packages/providers/webhook
@@ -138,6 +144,15 @@ importers:
         version: 4.6.7
 
   packages/providers/slack:
+    dependencies:
+      '@relay/core':
+        specifier: workspace:*
+        version: link:../../core
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+
+  packages/providers/sms:
     dependencies:
       '@relay/core':
         specifier: workspace:*

@@ -35,6 +35,7 @@ Events with no text never match a text filter.
 | `packages/core` | Config, crypto, DB schema and migrations, queue, envelope, provider interface, metrics |
 | `packages/providers/slack` | Slack adapter: signature check, normalize, OAuth |
 | `packages/providers/webhook` | Generic signed-webhook adapter |
+| `packages/providers/sms` | Twilio SMS adapter: signature check, normalize, `send` action |
 | `packages/destinations/agent` | Agent runner (Claude Agent SDK), tool set, prompts |
 
 ## Run it
@@ -72,6 +73,7 @@ Tests use the `relay_test` database. Compose creates it on first start, so tests
 | `PORT` | server | Default 3000 |
 | `PUBLIC_URL` | server, worker | Public HTTPS base URL. The OAuth `redirect_uri` is `$PUBLIC_URL/oauth/slack/callback`. The worker sends `$PUBLIC_URL/actions` to destinations. |
 | `SLACK_API_BASE_URL` | server, worker | Slack Web API base. Default `https://slack.com/api`. Change only to stub Slack in tests. |
+| `SMS_API_BASE_URL` | server, worker | Twilio API base. Default `https://api.twilio.com`. Change only to stub Twilio in tests. |
 | `REPLY_TOKEN_TTL_SECONDS` | worker | How long a reply token lives. Default 3600. |
 | `SLACK_SIGNING_SECRET` | server | From the Slack app's Basic Information page |
 | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | server | Same page |
@@ -98,6 +100,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 |---|---|
 | `POST /hooks/slack` | Slack Events API Request URL |
 | `POST /hooks/webhook/:connectionId` | Generic webhook |
+| `POST /hooks/sms/:connectionId` | Twilio inbound SMS webhook |
 | `POST /actions` | Async actions, with a reply token. See Actions. |
 | `GET /oauth/slack/start` | Starts Slack OAuth (user scopes only). Needs a console session. |
 | `GET /oauth/slack/callback` | Slack OAuth redirect target. Sends you back to the console. |
@@ -114,6 +117,7 @@ Console API. Everything needs a session except signing in and signing up.
 | `POST /api/users` | Sign up with `{email, password}`. Only when `SIGNUP_MODE=open`. |
 | `GET /api/connections` | Your connections and your role in each. |
 | `POST /api/connections/webhook` | New webhook connection you own. Body `{name?}`. The secret shows once. |
+| `POST /api/connections/sms` | New SMS connection you own. Body `{name?, accountSid, number, authToken}`. Returns the webhook `url`. The auth token is never returned. 409 if that number is already connected. |
 | `GET /api/connections/slack-url` | Where to start Slack OAuth. |
 | `POST /api/tokens/revoke` | Revoke a reply token by `jti`. |
 | `/api/c/:connectionId/*` | Everything else, inside one connection: `overview`, `events`, `events/facets`, `events/:id`, `events/:id/replay`, `deliveries`, `deliveries/:id/replay`, `routes`, `routes/preview`, `routes/:id` (and `enable`, `disable`), `destinations`, `destinations/:id`, `destinations/:id/rotate-secret`, `revoke`. |
@@ -344,6 +348,19 @@ Send events to `POST /hooks/webhook/<connection id>` with these headers:
 
 The body must be JSON. The event type becomes `webhook.<body.type>`, or `webhook.event` if `type` is missing.
 
+## SMS (Twilio)
+
+One connection per Twilio number. Create it in the console (Connections, then New SMS) with the number (E.164), the Account SID, and the auth token. Relay stores the token encrypted and uses it both to check inbound signatures and to send.
+
+In the Twilio console, set the number's "A message comes in" webhook to `$PUBLIC_URL/hooks/sms/<connection id>` with HTTP POST. The URL must match what Twilio signs, so set `PUBLIC_URL` to the exact public origin.
+
+- Inbound events have type `sms.message.received`. `actor` and `context.channelId` are the sender's number, `context.messageId` is the `MessageSid`, and `text` is `Body`. Media URLs stay in the raw payload only; `subtype` is `media` when `NumMedia` is above 0.
+- Relay answers Twilio with empty TwiML, so it never auto-replies.
+- Action `send` (param `body`, 1 to 1600 chars) texts the sender from the connection's number. Like Slack actions, it can only target the source event's sender.
+- Twilio errors: 429, 5xx and network errors are retried. Other errors fail at once with code `twilio_<code>` when Twilio gave one.
+- Loop guard: an inbound message from the connection's own number is skipped (`skipped_echo`).
+- Not supported yet: MMS sending, delivery status callbacks, Messaging Services as the sender.
+
 ## Ingress behavior
 
 | Case | Response |
@@ -353,4 +370,4 @@ The body must be JSON. The event type becomes `webhook.<body.type>`, or `webhook
 | Bad or stale signature | 401 |
 | Unknown or revoked connection | 200. Nothing is stored. |
 | Slack `tokens_revoked` | 200. Matching connections become `revoked`. |
-| Body isn't JSON | 400 |
+| Body isn't JSON (SMS: bodies are form-encoded, so this can't happen) | 400 |
