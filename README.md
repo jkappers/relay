@@ -23,8 +23,11 @@ A route belongs to one connection and only sees that connection's events. It mat
 - `text_contains` (case-insensitive) is in the text, if set.
 - `text_regex` matches the text, if set. Max 200 characters, checked when saved. It has no flags.
 - The envelope has no `subtype`, unless `include_subtypes` is on.
+- The envelope's `actor` is in `actor_in`, if that list is set. Exact, case-sensitive match. An empty or missing list means anyone.
 
-Events with no text never match a text filter.
+Events with no text never match a text filter. Events with no actor never match an `actor_in` list.
+
+`actor_in` is the deterministic guard for routes that must only fire for certain people. How far you can trust the actor depends on the provider: Slack and Discord set it from the signed event (the user ID). SMS sets it to the `From` number, which Twilio signs but which carriers do not verify, so treat it as a filter, not an identity check. Webhook events have no actor, so an `actor_in` route never matches them. A route that misses on `actor_in` is just not matched: the event counts as `unmatched` (or matches other routes) and never reaches the classifier.
 
 ## Layout
 
@@ -135,7 +138,7 @@ Console API. Everything needs a session except signing in and signing up.
 | `GET /api/connections/slack-url` | Where to start Slack OAuth. |
 | `GET /api/connections/providers` | `{slack, discord}`: the install start URL for each, or null when its app settings are missing. |
 | `POST /api/tokens/revoke` | Revoke a reply token by `jti`. |
-| `/api/c/:connectionId/*` | Everything else, inside one connection: `overview`, `events`, `events/facets`, `events/:id`, `events/:id/replay`, `deliveries`, `deliveries/:id/replay`, `routes`, `routes/preview`, `routes/:id` (and `enable`, `disable`), `classifier` (`GET`, and `PUT {mode, dailyLimit}`), `destinations`, `destinations/:id`, `destinations/:id/rotate-secret`, `revoke`. |
+| `/api/c/:connectionId/*` | Everything else, inside one connection: `overview`, `events`, `events/facets`, `events/:id`, `events/:id/replay`, `deliveries`, `deliveries/:id/replay`, `routes`, `routes/preview`, `routes/:id` (and `enable`, `disable`), `events/:id/decision`, `classifier` (`GET`, and `PUT {mode, dailyLimit}`), `destinations`, `destinations/:id`, `destinations/:id/rotate-secret`, `revoke`. |
 
 If you are not a member of the connection, or an id belongs to another connection, the answer is 404.
 | `GET /metrics` | Prometheus text. See `docs/metrics.md`. |
@@ -156,8 +159,8 @@ The console does most of what these do. Run from the repo root with `pnpm --filt
 | `destinations:create --connection C --name N --url U [--max-attempts 8] [--timeout-ms 10000] [--allowed-actions reply,react]` | Creates an HTTP destination. Prints its id and signing secret once. |
 | `destinations:create --connection C --kind agent --name N --system-prompt-file F [--model M] [--max-turns 8] [--timeout-seconds 300] [--max-mutating-actions 3] [--allowed-actions thread.history,reply]` | Creates an agent destination. See Agents. |
 | `agent-runs:list [--status failed]` | Lists the 100 newest agent runs: id, delivery, status, turns, tokens, cost. |
-| `routes:create --connection C --name N --event-type T --destination ID [--destination ID...] [--contains S] [--regex R] [--include-subtypes]` | Creates a route. Every destination must be in connection C. |
-| `routes:list` | Lists routes. |
+| `routes:create --connection C --name N --event-type T --destination ID [--destination ID...] [--contains S] [--regex R] [--include-subtypes] [--actor-in ID,ID...] [--selection always\|classifier] [--intent TEXT] [--fallback drop\|deliver]` | Creates a route. Every destination must be in connection C. `--actor-in` takes commas or repeats. `--selection classifier` needs `--intent`. |
+| `routes:list` | Lists routes, with their actor list and classifier fields. |
 | `tokens:revoke <jti>` | Revokes a reply token. Find the jti in `deliveries.last_reply_jti`. |
 | `deliveries:list [--status failed]` | Lists the 100 newest deliveries. |
 | `deliveries:replay <deliveryId>` | Resets a `failed` delivery to `pending` with 0 attempts and queues it. |
@@ -189,7 +192,9 @@ pnpm build:console   # writes apps/console/dist
 pnpm dev:server      # then open http://localhost:$PORT
 ```
 
-Sign in with your email and password. If you have no connections, the console shows only "Add a connection". After that, a switcher at the top of the rail picks the connection you are looking at. URLs look like `#/c/<connection id>/events`. Pages: Overview, Connections, Destinations, Routes (with a live match preview), Events (with raw and normalized JSON, deliveries, and replay), and Deliveries (with a failed filter and replay). Each page shows only the current connection.
+Sign in with your email and password. If you have no connections, the console shows only "Add a connection". After that, a switcher at the top of the rail picks the connection you are looking at. URLs look like `#/c/<connection id>/events`. Pages: Overview, Connections, Destinations, Routes (with a live match preview, the actor and classifier fields, and the connection's classifier mode and daily limit), Events (with raw and normalized JSON, deliveries, the classifier decision, and replay), and Deliveries (with a failed filter and replay). Each page shows only the current connection.
+
+The Events list has a "Not picked" filter for `classified_none` events: only classifier routes matched, and the classifier (or its fallback) picked none. An event's panel shows its stored classifier decision, if any: mode, model, status, error code, latency, tokens, and each candidate label with its route and whether it was picked.
 
 Secrets (a new webhook secret, a new destination secret, a rotated secret) show once in a copy box. Relay keeps only an encrypted copy.
 
@@ -238,7 +243,7 @@ Anyone who can message you controls the event text, so **prompt injection is exp
 - It loads none of your settings, CLAUDE.md, MCP servers, hooks, or skills. It runs in an empty temp directory with a minimal environment.
 - It cannot pick a channel or thread. Every action goes to the source event's thread, as in Actions above.
 - It is capped by turns, time, and Slack changes per run.
-- The prompt tells the model the event is untrusted data. That helps, but it is not the main control.
+- The prompt tells the model the event is untrusted data, and so are tool results (`thread_history` returns other people's messages). That helps, but it is not the main control.
 
 What can still happen: a crafted message may make the agent post an unwanted reply in that same thread, as you, up to the cap. Pick a prompt, a small `--allowed-actions` list, and a low cap with that in mind. Replies appear publicly as you.
 
@@ -257,6 +262,11 @@ Route fields (console API):
 | `selection` | `always` | `always` delivers on match. `classifier` delivers on match only if the classifier picks it. |
 | `intent` | none | What events this route is for, in plain words. Required for `classifier`. Max 500 chars. This is all the model sees of the route. |
 | `classifierFallback` | `drop` | What a gated route does when there is no usable answer (timeout, error, refusal, bad output, or over the daily limit): `drop` or `deliver`. |
+| `actorIn` | none | Actor IDs the route is limited to (max 100, each 1 to 200 chars, trimmed, deduped). `[]` or `null` clears it. Deterministic, checked before the classifier. |
+
+On `PUT /routes/:id`, leaving out `selection`, `intent`, `classifierFallback`, or `actorIn` keeps the stored value. An old client that does not know a field can't clear it by accident.
+
+`GET /events/:id/decision` returns `{decision: null}` or the stored decision: `mode`, `model`, `status` (`ok`, `fallback`, `budget_exceeded`), `error`, `latencyMs`, `inputTokens`, `outputTokens`, `createdAt`, `candidates` (`label`, `routeId`, `routeName`, `selected`), and `selected`. Route names come only from the path connection; a deleted route shows `routeName: null`.
 
 Connection settings (`GET`/`PUT /api/c/:connectionId/classifier`, body `{mode, dailyLimit}`):
 
@@ -270,7 +280,7 @@ How it runs:
 - One call per event, with `claude-haiku-5-5`, structured output limited to the labels `r1..rn`, 5 s timeout, 1 retry. Gated routes are shown only as a label plus their intent. Labels outside the set are dropped.
 - The first decision is stored in `route_decisions` and is final. Retries, rechecks, sweeps, and replays reuse it, intersected with the routes that match now. A gated route added later never gets that event.
 - Echoes are dropped before the classifier, so they never reach it.
-- Event text is untrusted. Injected text can at most change which of the matched gated routes get the event. Never use a classifier route as the only guard in front of a high-risk destination. Use deterministic filters for that.
+- Event text is untrusted. Injected text can at most change which of the matched gated routes get the event. Never use a classifier route as the only guard in front of a high-risk destination. Use deterministic filters for that, such as `actor_in`. The console's route form says the same.
 - Watch `relay_classifier_calls_total`, `relay_classifier_decisions_total`, and `relay_classifier_tokens_total` (see `docs/metrics.md`).
 
 ## Verify a delivery

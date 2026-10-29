@@ -89,10 +89,10 @@ Gateway metrics (`apps/gateway`):
 | Outcome | Meaning |
 |---|---|
 | `matched` | At least one route matched. Deliveries were created or already existed. |
-| `unmatched` | No route matched. |
+| `unmatched` | No route matched. This includes routes whose `actor_in` list does not hold the event's actor (or the event has no actor). There is no separate outcome: an `actor_in` miss is an ordinary non-match. |
 | `skipped_inactive` | The event's connection isn't `active`. |
 | `skipped_echo` | The provider says relay sent this message (Slack: its channel and ts are in `sent_messages`; SMS: the sender is the connection's own number; Discord: the channel and message id are in `sent_messages`, or the actor is the bot user). Marked routed, no deliveries. |
-| `classified_none` | Only gated routes matched, and after the classifier (or its fallbacks) none of them gets the event. Marked routed, no deliveries. Shadow mode never gives this. |
+| `classified_none` | Only gated routes matched, and after the classifier (or its fallbacks) none of them gets the event. Marked routed, no deliveries. Shadow mode never gives this. The console shows these as "Not picked" (an `enforce` decision is stored and the event has no deliveries). |
 | `echo_recheck` | The actor is the connection's own user, nothing matched `sent_messages` yet, and the event is under 30 s old. A `route` job with `recheck: true` was queued 5 s out. The event is not marked routed. Never for Discord: the bot's own posts are dropped at the gateway. |
 
 ## `relay_classifier_calls_total` outcomes
@@ -210,7 +210,7 @@ Changes made through the console API that succeeded. Labels `resource` and `acti
 
 | Resource | Actions |
 |---|---|
-| `connection` | `create`, `revoke`, `update` (`create` covers webhook and SMS connections; `update` is `PUT /classifier`) |
+| `connection` | `create`, `revoke`, `update` (`create` covers webhook and SMS connections; `update` is `PUT /classifier`, the classifier mode and daily limit, from the console's Routes page or the API) |
 | `destination` | `create`, `update`, `delete`, `rotate_secret` |
 | `route` | `create`, `update`, `delete`, `enable`, `disable` |
 | `event` | `replay` |
