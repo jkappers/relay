@@ -164,6 +164,7 @@ export const routes = pgTable(
     selection: routeSelection('selection').notNull().default('always'),
     intent: text('intent'),
     classifierFallback: classifierFallback('classifier_fallback').notNull().default('drop'),
+    actorIn: text('actor_in').array(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

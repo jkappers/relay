@@ -1,0 +1,1 @@
+ALTER TABLE "routes" ADD COLUMN "actor_in" text[];

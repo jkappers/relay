@@ -68,6 +68,8 @@ export async function createDestination(
 }
 
 export const MAX_INTENT_LENGTH = 500
+export const MAX_ACTOR_IN = 100
+export const MAX_ACTOR_ID_LENGTH = 200
 
 export const createRouteFields = z.object({
   name: z.string().min(1),
@@ -95,6 +97,12 @@ export const createRouteFields = z.object({
     .optional()
     .transform((v) => (v === '' ? null : v)),
   classifierFallback: z.enum(['drop', 'deliver']).optional(),
+  actorIn: z
+    .array(z.string().trim().min(1).max(MAX_ACTOR_ID_LENGTH))
+    .max(MAX_ACTOR_IN)
+    .nullable()
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === null || v.length === 0 ? null : [...new Set(v)])),
 })
 
 export const createRouteInput = createRouteFields.superRefine((v, ctx) => {
@@ -147,6 +155,7 @@ export async function createRoute(db: Db, connectionId: string, input: CreateRou
         selection: parsed.selection,
         intent: parsed.intent,
         classifierFallback: parsed.classifierFallback,
+        actorIn: parsed.actorIn ?? null,
       })
       .returning()
     await tx
@@ -178,6 +187,7 @@ export async function updateRoute(db: Db, connectionId: string, id: string, inpu
         selection,
         intent,
         ...(parsed.classifierFallback !== undefined && { classifierFallback: parsed.classifierFallback }),
+        ...(parsed.actorIn !== undefined && { actorIn: parsed.actorIn }),
         updatedAt: new Date(),
       })
       .where(inTenant)

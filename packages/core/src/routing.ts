@@ -9,9 +9,10 @@ export interface RouteMatchFields {
   textContains: string | null
   textRegex: string | null
   includeSubtypes: boolean
+  actorIn: string[] | null
 }
 
-export type MatchableEnvelope = Pick<Envelope, 'connectionId' | 'type' | 'subtype' | 'text'>
+export type MatchableEnvelope = Pick<Envelope, 'connectionId' | 'type' | 'subtype' | 'text' | 'actor'>
 
 export function validateRegex(source: string): string | null {
   if (source.length > MAX_REGEX_LENGTH) return `regex must be at most ${MAX_REGEX_LENGTH} characters`
@@ -32,6 +33,9 @@ export function matchRoute(route: RouteMatchFields, envelope: MatchableEnvelope)
   if (route.connectionId !== envelope.connectionId) return false
   if (!typeMatches(route.eventType, envelope.type)) return false
   if (!route.includeSubtypes && envelope.subtype !== null) return false
+  if (route.actorIn && route.actorIn.length > 0) {
+    if (typeof envelope.actor !== 'string' || !route.actorIn.includes(envelope.actor)) return false
+  }
   if (route.textContains !== null) {
     if (envelope.text === null || !envelope.text.toLowerCase().includes(route.textContains.toLowerCase())) return false
   }
