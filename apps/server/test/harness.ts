@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { sql } from 'drizzle-orm'
 import {
   createCipher,
@@ -6,6 +8,7 @@ import {
   createDb,
   PgBossQueue,
   QUEUES,
+  type Cipher,
   type ConnectionStore,
   type Db,
 } from '@relay/core'
@@ -18,15 +21,20 @@ import { createServerMetrics, type ServerMetrics } from '../src/metrics'
 
 export const SIGNING_SECRET = 'test-signing-secret'
 export const PUBLIC_URL = 'http://relay.test'
+export const CONSOLE_PASSWORD = 'correct horse battery staple'
+export const CSRF = { 'x-relay-console': '1' }
+export const INDEX_HTML = '<!doctype html><title>console</title><div id="root"></div><script type="module" src="/assets/app.js"></script>'
 
 export interface Harness {
   db: Db
   queue: PgBossQueue
   connections: ConnectionStore
+  cipher: Cipher
   metrics: ServerMetrics
   fetch: ReturnType<typeof vi.fn<typeof fetch>>
   app: ReturnType<typeof createApp>
   slack: SlackStub
+  distDir: string
 }
 
 export function useHarness(): Harness {
@@ -37,10 +45,16 @@ export function useHarness(): Harness {
     const handle = createDb(TEST_DATABASE_URL, { max: 5 })
     h.db = handle.db
     close = handle.close
-    h.connections = createConnectionStore(h.db, await createCipher(TEST_MASTER_KEY))
+    h.cipher = await createCipher(TEST_MASTER_KEY)
+    h.connections = createConnectionStore(h.db, h.cipher)
     h.queue = new PgBossQueue(TEST_DATABASE_URL)
     await h.queue.start()
     await h.queue.ensureQueue(QUEUES.route)
+    await h.queue.ensureQueue(QUEUES.dispatch)
+    h.distDir = mkdtempSync(join(tmpdir(), 'relay-console-dist-'))
+    mkdirSync(join(h.distDir, 'assets'))
+    writeFileSync(join(h.distDir, 'index.html'), INDEX_HTML)
+    writeFileSync(join(h.distDir, 'assets', 'app.js'), 'console.log(1)')
     h.slack = await startSlackStub()
   })
 
@@ -57,17 +71,21 @@ export function useHarness(): Harness {
         SLACK_CLIENT_SECRET: 'client-secret',
         SLACK_ALLOWED_USER_IDS: ['U065VRX1T0'],
         RELAY_MASTER_KEY: TEST_MASTER_KEY,
+        CONSOLE_PASSWORD,
         SLACK_API_BASE_URL: h.slack.url,
       },
       db: h.db,
       queue: h.queue,
       connections: h.connections,
+      cipher: h.cipher,
+      consoleDistDir: h.distDir,
       metrics: h.metrics,
       fetch: h.fetch,
     })
   })
 
   afterAll(async () => {
+    if (h.distDir) rmSync(h.distDir, { recursive: true, force: true })
     await h.slack?.close()
     await h.queue?.stop()
     await close?.()
@@ -116,4 +134,27 @@ export async function routeJobCount(db: Db, eventId: string): Promise<number> {
     sql`select count(*)::int as n from pgboss.job where name = ${QUEUES.route} and data->>'eventId' = ${eventId}`,
   )
   return rows[0]?.n ?? 0
+}
+
+export async function login(app: Harness['app'], password = CONSOLE_PASSWORD) {
+  const res = await app.request('/api/session', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...CSRF },
+    body: JSON.stringify({ password }),
+  })
+  const cookie = res.headers.get('set-cookie')?.split(';')[0] ?? ''
+  return { res, cookie }
+}
+
+export interface Api {
+  (method: string, path: string, body?: unknown): Response | Promise<Response>
+}
+
+export function apiAs(app: Harness['app'], cookie: string): Api {
+  return (method, path, body) =>
+    app.request(path, {
+      method,
+      headers: { cookie, ...CSRF, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
 }

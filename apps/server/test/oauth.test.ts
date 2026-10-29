@@ -1,6 +1,6 @@
 import { schema } from '@relay/core'
 import { describe, expect, it } from 'vitest'
-import { useHarness } from './harness'
+import { login, useHarness } from './harness'
 
 const h = useHarness()
 
@@ -14,7 +14,8 @@ const slackOk = {
 }
 
 async function start() {
-  const res = await h.app.request('/oauth/slack/start')
+  const session = (await login(h.app)).cookie
+  const res = await h.app.request('/oauth/slack/start', { headers: { cookie: session } })
   expect(res.status).toBe(302)
   const location = new URL(res.headers.get('location')!)
   const cookie = res.headers.get('set-cookie')!.split(';')[0]!
