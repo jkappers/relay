@@ -1,0 +1,11 @@
+{
+  "name": "@relay/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file-if-exists=../../.env --import tsx src/main.ts"
+  },
+  "dependencies": {
+    "@relay/core": "workspace:*"
+  }
+}
