@@ -72,7 +72,7 @@ type Env = { Variables: { userId: string; connectionId: string } }
 type DestinationRow = typeof schema.destinations.$inferSelect
 type RouteRow = typeof schema.routes.$inferSelect
 
-const { connections, destinations, routes, routeDestinations, deliveries, events, actionsLog, agentRuns, users } = schema
+const { connections, destinations, routes, routeDestinations, deliveries, events, actionsLog, agentRuns, users, routeDecisions } = schema
 
 const uuid = z.uuid()
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
@@ -125,6 +125,7 @@ const serializeRoute = (r: RouteRow, destinationIds: string[]) => ({
   selection: r.selection,
   intent: r.intent,
   classifierFallback: r.classifierFallback,
+  actorIn: r.actorIn,
   destinationIds,
   createdAt: r.createdAt,
   updatedAt: r.updatedAt,
@@ -147,13 +148,13 @@ interface StatusCounts {
 }
 
 interface EventTrace {
-  routed: 'pending' | 'inactive' | 'echo' | 'routed' | 'unmatched'
+  routed: 'pending' | 'inactive' | 'echo' | 'routed' | 'classified_none' | 'unmatched'
   deliveries: StatusCounts
   actions: StatusCounts
   failedDelivery: { id: string; lastError: string | null } | null
 }
 
-const FACETS = ['failed', 'pending', 'unrouted', 'echo', 'ok'] as const
+const FACETS = ['failed', 'pending', 'unrouted', 'classified', 'echo', 'ok'] as const
 type Facet = (typeof FACETS)[number]
 
 const facetsQuery = z.object({
@@ -551,7 +552,8 @@ export function consoleApi(deps: ConsoleApiDeps) {
 
   t.post('/routes/preview', validated('json', previewBody), async (c) => {
     const tenant = c.var.connectionId
-    const def = { ...(c.req.valid('json') as z.output<typeof previewBody>), connectionId: tenant }
+    const body = c.req.valid('json') as z.output<typeof previewBody>
+    const def = { ...body, actorIn: body.actorIn ?? null, connectionId: tenant }
     const rows = await db
       .select({ id: events.id, receivedAt: events.receivedAt, envelope: events.envelope })
       .from(events)
@@ -562,7 +564,7 @@ export function consoleApi(deps: ConsoleApiDeps) {
       .filter((r) => matchRoute(def, r.envelope as Envelope))
       .map((r) => {
         const env = r.envelope as Envelope
-        return { id: r.id, receivedAt: r.receivedAt, type: env.type, subtype: env.subtype, text: env.text?.slice(0, 200) ?? null }
+        return { id: r.id, receivedAt: r.receivedAt, type: env.type, subtype: env.subtype, actor: env.actor, text: env.text?.slice(0, 200) ?? null }
       })
     return c.json({ scanned: rows.length, matches })
   })
@@ -617,6 +619,10 @@ export function consoleApi(deps: ConsoleApiDeps) {
                 and s.ts = ${events.envelope}->'context'->>'messageId'
             ) then 'echo'
             when exists (select 1 from deliveries d where d.event_id = events.id) then 'routed'
+            when exists (
+              select 1 from route_decisions rd
+              where rd.event_id = events.id and rd.connection_id = events.connection_id and rd.mode = 'enforce'
+            ) then 'classified_none'
             else 'unmatched'
           end`
   const has = (status: string) => sql`(
@@ -629,6 +635,7 @@ export function consoleApi(deps: ConsoleApiDeps) {
     failed,
     pending: sql`not ${failed} and (${events.routedAt} is null or ${has('pending')})`,
     unrouted: sql`${settled} and ${events.routedAt} is not null and ${routedState} in ('unmatched', 'inactive')`,
+    classified: sql`${settled} and ${events.routedAt} is not null and ${routedState} = 'classified_none'`,
     echo: sql`${settled} and ${events.routedAt} is not null and ${routedState} = 'echo'`,
     ok: sql`${settled} and ${routedState} = 'routed'`,
   }
@@ -648,6 +655,7 @@ export function consoleApi(deps: ConsoleApiDeps) {
         failed: sql<number>`(count(*) filter (where ${facets.failed}))::int`,
         pending: sql<number>`(count(*) filter (where ${facets.pending}))::int`,
         unrouted: sql<number>`(count(*) filter (where ${facets.unrouted}))::int`,
+        classified: sql<number>`(count(*) filter (where ${facets.classified}))::int`,
         echo: sql<number>`(count(*) filter (where ${facets.echo}))::int`,
         ok: sql<number>`(count(*) filter (where ${facets.ok}))::int`,
       })
@@ -745,6 +753,10 @@ export function consoleApi(deps: ConsoleApiDeps) {
         ])
       : [[], []]
 
+    const [decision] = await db
+      .select({ mode: routeDecisions.mode })
+      .from(routeDecisions)
+      .where(and(eq(routeDecisions.eventId, id), eq(routeDecisions.connectionId, tenant)))
     const envelope = event.envelope as Envelope
     let echo = false
     const runtime = deps.runtimes[event.provider]
@@ -764,7 +776,9 @@ export function consoleApi(deps: ConsoleApiDeps) {
             ? 'skipped_echo'
             : deliveryRows.length > 0
               ? 'routed'
-              : 'unmatched'
+              : decision?.mode === 'enforce'
+                ? 'classified_none'
+                : 'unmatched'
 
     return c.json({
       id: event.id,
@@ -776,6 +790,7 @@ export function consoleApi(deps: ConsoleApiDeps) {
       routedAt: event.routedAt,
       state,
       echo,
+      classified: decision !== undefined,
       routed: event.routedAt !== null,
       envelope: event.envelope,
       raw: event.raw,
@@ -787,6 +802,45 @@ export function consoleApi(deps: ConsoleApiDeps) {
       })),
       actions: actionRows,
       agentRuns: runRows,
+    })
+  })
+
+  t.get('/events/:id/decision', async (c) => {
+    const id = idParam(c)
+    const tenant = c.var.connectionId
+    const [event] = await db
+      .select({ id: events.id })
+      .from(events)
+      .where(and(eq(events.id, id), eq(events.connectionId, tenant)))
+    if (!event) throw notFound('event not found')
+    const [row] = await db
+      .select()
+      .from(routeDecisions)
+      .where(and(eq(routeDecisions.eventId, id), eq(routeDecisions.connectionId, tenant)))
+    if (!row) return c.json({ decision: null })
+    const routeIds = [...new Set([...row.candidates.map((x) => x.routeId), ...row.selected])]
+    const names = routeIds.length
+      ? await db
+          .select({ id: routes.id, name: routes.name })
+          .from(routes)
+          .where(and(inArray(routes.id, routeIds), eq(routes.connectionId, tenant)))
+      : []
+    const nameOf = (routeId: string) => names.find((n) => n.id === routeId)?.name ?? null
+    const selected = new Set(row.selected)
+    return c.json({
+      decision: {
+        id: row.id,
+        mode: row.mode,
+        model: row.model,
+        status: row.status,
+        error: row.error,
+        latencyMs: row.latencyMs,
+        inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens,
+        createdAt: row.createdAt,
+        candidates: row.candidates.map((x) => ({ label: x.label, routeId: x.routeId, routeName: nameOf(x.routeId), selected: selected.has(x.routeId) })),
+        selected: row.selected.map((routeId) => ({ routeId, routeName: nameOf(routeId) })),
+      },
     })
   })
 

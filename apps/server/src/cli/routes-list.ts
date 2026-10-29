@@ -16,6 +16,10 @@ await runCli(async ({ db }) => {
         textContains: r.textContains,
         textRegex: r.textRegex,
         includeSubtypes: r.includeSubtypes,
+        actorIn: r.actorIn,
+        selection: r.selection,
+        intent: r.intent,
+        classifierFallback: r.classifierFallback,
         destinations: dests,
       }),
     )
