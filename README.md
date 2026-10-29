@@ -1,8 +1,59 @@
-# relay
+# Relay
 
-Relay is an event-ingest service. Providers like Slack and Discord send it events. Relay checks each event's signature, saves it, and puts it on a queue. A worker picks it up from there.
+Relay is one place for events to come in and actions to go back out. Slack messages, Discord mentions, and signed webhooks arrive, get stored, and route to destinations — a signed HTTP endpoint, or a Claude agent running inside Relay — that can reply, react, or read the thread on the sender's behalf. The owner runs their own instance for their own traffic; other users sign in, connect their own Slack and Discord accounts, and see only their own connection.
 
-Milestones 1 to 11 are done: ingest, routing, signed HTTP delivery with retries, actions (reply, react, and more) with a loop guard, agent destinations that run Claude on an event, a web console, user accounts with each connection as its own tenant, SMS through Twilio, classifier routing (an LLM gate that can only narrow matched routes), and tool destinations (operator-registered HTTP tools an agent can call).
+Acting on someone's behalf is safe by construction:
+
+- **Signed both ways.** Inbound requests are checked against a signature, and outbound deliveries carry an HMAC signature of their own.
+- **Stored before processed.** Every event is saved and deduplicated before anything acts on it.
+- **Actions are scoped.** A destination can reply, react, or post only in the thread or channel the triggering event came from — never another one.
+- **Idempotent side effects.** Retries carry an idempotency key, so a crash or a resend never produces a double post.
+- **Agents are locked down.** An agent destination has no shell, files, or web access — only Relay's own actions, capped by turn count, wall-clock time, and a mutation limit.
+- **Stranded work gets swept.** A sweeper requeues events and deliveries that got stuck mid-flight, on a short interval.
+
+Eleven milestones are done so far: ingest, routing, signed HTTP delivery with retries, actions with a loop guard, agent destinations, a web console, multi-tenant user accounts, SMS through Twilio, classifier routing, and operator-registered tool destinations.
+
+## Architecture
+
+An event moves from ingress onto a queue, through a worker that routes and dispatches it, out to a destination, and optionally back out as an action.
+
+```mermaid
+flowchart LR
+    Provider["Slack / Discord / webhook / SMS"] -->|signed| Server["apps/server (ingress)"]
+    Server --> Queue[("pg-boss queue")]
+    Queue --> Worker["apps/worker (router, dispatcher, agent runs)"]
+    Worker -->|signed delivery| Destination["HTTP endpoint or Claude agent"]
+    Destination -->|actions| Provider
+```
+
+| Path | What it is |
+|---|---|
+| `apps/server` | Hono HTTP server: ingress, Slack and Discord OAuth, `POST /actions`, `/metrics`, `/healthz`, the console API (`/api`), and the built console |
+| `apps/console` | The web console: Vite + React. Built files go to `apps/console/dist` |
+| `apps/worker` | pg-boss consumers: router, dispatcher, actions, and agent runs, plus `/metrics` and `/healthz` |
+| `apps/gateway` | Discord Gateway client. One copy at a time (Postgres advisory lock). Stores mentions and DMs. `/metrics` and `/healthz` |
+| `packages/core` | Config, crypto, DB schema and migrations, queue, envelope, provider interface, metrics |
+| `packages/providers/slack` | Slack adapter: signature check, normalize, OAuth |
+| `packages/providers/discord` | Discord: normalize, connection lookup, REST actions, OAuth bot install |
+| `packages/providers/webhook` | Generic signed-webhook adapter |
+| `packages/providers/sms` | Twilio SMS adapter: signature check, normalize, `send` action |
+| `packages/destinations/agent` | Agent runner (Claude Agent SDK), tool set, prompts |
+| `packages/classifier` | Classifier for gated routes: Anthropic Messages API call, prompt, label mapping, fake |
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Runtime | Node 24, TypeScript, pnpm workspaces |
+| Web server | Hono |
+| Queue | pg-boss |
+| Database | Postgres, drizzle-orm |
+| Console | React 19, Vite, Tailwind CSS 4 |
+| Discord | `@discordjs/rest`, `@discordjs/ws` |
+| Agents / LLM | Claude Agent SDK, `@anthropic-ai/sdk` |
+| Validation | zod |
+| Crypto | libsodium-wrappers |
+| Tests | vitest |
 
 ## How an event flows
 
@@ -28,22 +79,6 @@ A route belongs to one connection and only sees that connection's events. It mat
 Events with no text never match a text filter. Events with no actor never match an `actor_in` list.
 
 `actor_in` is the deterministic guard for routes that must only fire for certain people. How far you can trust the actor depends on the provider: Slack and Discord set it from the signed event (the user ID). SMS sets it to the `From` number, which Twilio signs but which carriers do not verify, so treat it as a filter, not an identity check. Webhook events have no actor, so an `actor_in` route never matches them. A route that misses on `actor_in` is just not matched: the event counts as `unmatched` (or matches other routes) and never reaches the classifier.
-
-## Layout
-
-| Path | What it is |
-|---|---|
-| `apps/server` | Hono HTTP server: ingress, Slack and Discord OAuth, `POST /actions`, `/metrics`, `/healthz`, the console API (`/api`), and the built console |
-| `apps/console` | The web console: Vite + React. Built files go to `apps/console/dist` |
-| `apps/worker` | pg-boss consumers: router, dispatcher, actions, and agent runs, plus `/metrics` and `/healthz` |
-| `apps/gateway` | Discord Gateway client. One copy at a time (Postgres advisory lock). Stores mentions and DMs. `/metrics` and `/healthz` |
-| `packages/core` | Config, crypto, DB schema and migrations, queue, envelope, provider interface, metrics |
-| `packages/providers/slack` | Slack adapter: signature check, normalize, OAuth |
-| `packages/providers/discord` | Discord: normalize, connection lookup, REST actions, OAuth bot install |
-| `packages/providers/webhook` | Generic signed-webhook adapter |
-| `packages/providers/sms` | Twilio SMS adapter: signature check, normalize, `send` action |
-| `packages/destinations/agent` | Agent runner (Claude Agent SDK), tool set, prompts |
-| `packages/classifier` | Classifier for gated routes: Anthropic Messages API call, prompt, label mapping, fake |
 
 ## Run it
 
