@@ -87,6 +87,17 @@ describe('Slack OAuth', () => {
     expect(res.status).toBe(400)
   })
 
+  it('rejects a user outside the allowlist and stores nothing', async () => {
+    h.fetch.mockResolvedValue(Response.json({ ...slackOk, authed_user: { ...slackOk.authed_user, id: 'U999OTHER' } }))
+    const { state, cookie } = await start()
+    const res = await callback(`code=abc&state=${encodeURIComponent(state)}`, cookie)
+    expect(res.status).toBe(403)
+    expect(await h.db.select().from(schema.connections)).toHaveLength(0)
+    expect(await h.db.select().from(schema.credentials)).toHaveLength(0)
+    expect(h.metrics.oauthCallbacks.get({ provider: 'slack', outcome: 'not_allowed' })).toBe(1)
+    expect(h.metrics.oauthCallbacks.get({ provider: 'slack', outcome: 'success' })).toBe(0)
+  })
+
   it('reports a failed code exchange', async () => {
     h.fetch.mockResolvedValue(Response.json({ ok: false, error: 'invalid_code' }))
     const { state, cookie } = await start()

@@ -52,6 +52,7 @@ export function useHarness(): Harness {
         SLACK_SIGNING_SECRET: SIGNING_SECRET,
         SLACK_CLIENT_ID: 'client-id',
         SLACK_CLIENT_SECRET: 'client-secret',
+        SLACK_ALLOWED_USER_IDS: ['U065VRX1T0'],
         RELAY_MASTER_KEY: TEST_MASTER_KEY,
       },
       db: h.db,
