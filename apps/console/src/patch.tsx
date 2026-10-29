@@ -17,6 +17,7 @@ export const jackCode = (kind: string) => CODES[kind] ?? kind.slice(0, 3)
 
 export const lineLabel = (c: Connection | undefined, fallbackId?: string, provider?: string) => {
   if (!c) return fallbackId ? `${provider ?? 'line'} ${fallbackId.slice(0, 8)}` : 'Any connection'
+  if (c.name) return c.name
   if (c.provider === 'slack') return `slack ${c.userId ?? c.teamId ?? c.id.slice(0, 8)}`
   return `${c.provider} ${c.id.slice(0, 8)}`
 }

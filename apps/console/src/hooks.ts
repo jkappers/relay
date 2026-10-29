@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError } from './api'
+import { ApiError, currentTenant } from './api'
 
 export function useHashPath(): string {
   const read = () => window.location.hash.replace(/^#/, '') || '/'
@@ -14,6 +14,18 @@ export function useHashPath(): string {
 
 export const navigate = (path: string) => {
   window.location.hash = path
+}
+
+/** A console path inside the current connection: `/events` becomes `/c/<id>/events`. */
+export const at = (path: string) => {
+  const t = currentTenant()
+  return t ? `/c/${t}${path === '/' ? '' : path}` : path
+}
+export const hrefTo = (path: string) => `#${at(path)}`
+
+export function splitTenant(path: string): { connectionId: string | null; inner: string } {
+  const m = /^\/c\/([0-9a-f-]{36})(\/.*)?$/.exec(path)
+  return m ? { connectionId: m[1]!, inner: m[2] ?? '/' } : { connectionId: null, inner: path }
 }
 
 export interface Loaded<T> {
@@ -74,7 +86,7 @@ export function parseRoute(path: string): { base: string; event: string | null }
   return { base, event: /(?:^|&)event=([0-9a-f-]{36})(?:&|$)/.exec(qs)?.[1] ?? null }
 }
 
-export const eventHref = (base: string, id: string) => (base === '/events' ? `#/events/${id}` : `#${base}?event=${id}`)
+export const eventHref = (base: string, id: string) => hrefTo(base === '/events' ? `/events/${id}` : `${base}?event=${id}`)
 
 export const focusRow = (id: string) => document.querySelector<HTMLElement>(`[data-ev="${id}"]`)?.focus()
 

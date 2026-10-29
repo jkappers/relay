@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { get, post, type DeliveryRow } from '../api'
 import { condenseCause } from '../cause'
 import { Async, ConfirmButton, CopyId, cx, Details, Empty, Json, Page, Segmented, SkeletonRows, Time } from '../components'
-import { eventHref, navigate, useLoad } from '../hooks'
+import { eventHref, hrefTo, navigate, useLoad } from '../hooks'
 import { Icon } from '../icons'
 import { StatusMark } from '../trace'
 
@@ -194,7 +194,7 @@ export function Deliveries({ open }: { open: string | null }) {
                 <Empty
                   title="No deliveries yet"
                   action={
-                    <a href="#/routes" className="btn btn-primary">
+                    <a href={hrefTo('/routes')} className="btn btn-primary">
                       Set up a route
                     </a>
                   }

@@ -1,15 +1,14 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { ApiError, del, get, post, put, type Connection, type Destination, type Route } from '../api'
+import { ApiError, currentTenant, del, get, post, put, type Connection, type Destination, type Route } from '../api'
 import { Async, Check, ConfirmButton, Empty, Field, FormError, Page, SectionHead, SkeletonRows, Time } from '../components'
 import { Icon } from '../icons'
 import { lineLabel, Patch } from '../patch'
 import { StatusMark } from '../trace'
-import { errorText, useDebounced, useLoad } from '../hooks'
+import { errorText, hrefTo, useDebounced, useLoad } from '../hooks'
 
 interface RouteForm {
   name: string
   eventType: string
-  connectionId: string
   textContains: string
   textRegex: string
   includeSubtypes: boolean
@@ -20,7 +19,6 @@ interface RouteForm {
 const blank: RouteForm = {
   name: '',
   eventType: 'slack.message.*',
-  connectionId: '',
   textContains: '',
   textRegex: '',
   includeSubtypes: false,
@@ -31,7 +29,6 @@ const blank: RouteForm = {
 const toForm = (r: Route): RouteForm => ({
   name: r.name,
   eventType: r.eventType,
-  connectionId: r.connectionId ?? '',
   textContains: r.textContains ?? '',
   textRegex: r.textRegex ?? '',
   includeSubtypes: r.includeSubtypes,
@@ -41,7 +38,6 @@ const toForm = (r: Route): RouteForm => ({
 
 const matchFields = (f: RouteForm) => ({
   eventType: f.eventType,
-  connectionId: f.connectionId || null,
   textContains: f.textContains || null,
   textRegex: f.textRegex || null,
   includeSubtypes: f.includeSubtypes,
@@ -102,7 +98,7 @@ function Preview({ form }: { form: RouteForm }) {
               <ul aria-label="Matching events" className="mt-1.5 divide-y divide-rule border-y border-rule">
                 {result.matches.slice(0, 10).map((m) => (
                   <li key={m.id} className="flex h-7 min-w-0 items-center gap-3 px-1">
-                    <a href={`#/events/${m.id}`} className="shrink-0 font-mono text-xs">
+                    <a href={hrefTo(`/events/${m.id}`)} className="shrink-0 font-mono text-xs">
                       {m.type}
                     </a>
                     <span className="min-w-0 flex-1 truncate text-ink-2">{m.text ?? ''}</span>
@@ -119,14 +115,14 @@ function Preview({ form }: { form: RouteForm }) {
   )
 }
 
-function RoutePatch({ route, connections, destinations, live }: { route: { connectionId: string | null; destinationIds: string[] }; connections: Connection[]; destinations: Destination[]; live: boolean }) {
-  const connection = route.connectionId ? connections.find((c) => c.id === route.connectionId) : undefined
+function RoutePatch({ route, connections, destinations, live }: { route: { connectionId: string; destinationIds: string[] }; connections: Connection[]; destinations: Destination[]; live: boolean }) {
+  const connection = connections.find((c) => c.id === route.connectionId)
   return (
     <Patch
       label="Destinations"
       live={live}
-      sourceCode={route.connectionId ? (connection?.provider ?? 'line') : 'any'}
-      sourceLabel={route.connectionId ? lineLabel(connection, route.connectionId) : 'Any connection'}
+      sourceCode={connection?.provider ?? 'line'}
+      sourceLabel={lineLabel(connection, route.connectionId)}
       targets={route.destinationIds.map((id) => {
         const d = destinations.find((x) => x.id === id)
         return { key: id, code: d?.kind ?? 'dest', label: d?.name ?? id.slice(0, 8), note: d && !d.enabled ? 'disabled' : undefined }
@@ -146,7 +142,8 @@ function RouteEditor({
   destinations: Destination[]
   onDone: () => void
 }) {
-  const [f, setF] = useState<RouteForm>(editing ? toForm(editing) : blank)
+  const provider = connections.find((c) => c.id === currentTenant())?.provider
+  const [f, setF] = useState<RouteForm>(editing ? toForm(editing) : { ...blank, eventType: provider === 'webhook' ? 'webhook.*' : blank.eventType })
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const set = <K extends keyof RouteForm>(k: K, v: RouteForm[K]) => setF((p) => ({ ...p, [k]: v }))
@@ -178,18 +175,6 @@ function RouteEditor({
           <Field label="Event type" hint="Exact, or a prefix ending in *, such as slack.message.*">
             {(p) => <input {...p} className="input font-mono" required value={f.eventType} onChange={(e) => set('eventType', e.target.value)} />}
           </Field>
-          <Field label="Connection">
-            {(p) => (
-              <select {...p} className="input" value={f.connectionId} onChange={(e) => set('connectionId', e.target.value)}>
-                <option value="">Any connection</option>
-                {connections.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {lineLabel(c)} ({c.status})
-                  </option>
-                ))}
-              </select>
-            )}
-          </Field>
           <Field label="Text contains" hint="Case-insensitive. Leave empty for any text.">
             {(p) => <input {...p} className="input" value={f.textContains} onChange={(e) => set('textContains', e.target.value)} />}
           </Field>
@@ -209,7 +194,7 @@ function RouteEditor({
           <legend className="label mb-0.5">Destinations</legend>
           {destinations.length === 0 ? (
             <p className="text-ink-2">
-              Create a destination first. <a href="#/destinations">Go to destinations</a>
+              Create a destination first. <a href={hrefTo('/destinations')}>Go to destinations</a>
             </p>
           ) : null}
           {destinations.map((d) => (
@@ -237,7 +222,7 @@ function RouteEditor({
         <section aria-labelledby="patch-title" className="flex min-w-0 flex-col gap-1.5">
           <SectionHead id="patch-title" title="Patch" />
           <RoutePatch
-            route={{ connectionId: f.connectionId || null, destinationIds: f.destinationIds }}
+            route={{ connectionId: editing?.connectionId ?? currentTenant() ?? '', destinationIds: f.destinationIds }}
             connections={connections}
             destinations={destinations}
             live={f.enabled}

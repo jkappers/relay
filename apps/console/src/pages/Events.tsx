@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { get, post, type Connection, type EventDetail, type EventPage as EventList, type EventSummary } from '../api'
 import { Async, ConfirmButton, CopyId, Details, Empty, Fact, Facts, Json, Notice, Page, Segmented, SkeletonRows, Time } from '../components'
-import { errorText, useDebounced, useLoad } from '../hooks'
+import { errorText, hrefTo, useDebounced, useLoad } from '../hooks'
 import { Icon } from '../icons'
 import { lineLabel, Patch } from '../patch'
 import { Lamp, plural, StatusMark, TraceDetail, traceOfDetail, type LampState } from '../trace'
@@ -9,15 +9,13 @@ import { CallLog, CallLogSkeleton, KeyHints } from './CallLog'
 import { DeliveryItem } from './Deliveries'
 
 interface Filters {
-  provider: string
-  connectionId: string
   type: string
   range: string
 }
 
 type Facet = '' | 'failed' | 'pending' | 'unrouted' | 'echo' | 'ok'
 
-const empty: Filters = { provider: '', connectionId: '', type: '', range: '' }
+const empty: Filters = { type: '', range: '' }
 
 const RANGES: readonly [string, string, number][] = [
   ['', 'All time', 0],
@@ -48,13 +46,11 @@ export function Events({ open }: { open: string | null }) {
   const type = useDebounced(f.type.trim(), 300)
   const qs = useMemo(() => {
     const p = new URLSearchParams()
-    if (f.provider) p.set('provider', f.provider)
-    if (f.connectionId) p.set('connectionId', f.connectionId)
     if (type) p.set('type', type)
     const ms = RANGES.find((r) => r[0] === f.range)?.[2]
     if (ms) p.set('since', new Date(Date.now() - ms).toISOString())
     return p.toString()
-  }, [f.provider, f.connectionId, f.range, type])
+  }, [f.range, type])
   const list = (cur?: string) => `/api/events?${qs}${outcome ? `&outcome=${outcome}` : ''}${cur ? `&cursor=${cur}` : ''}`
   const connections = useLoad(() => get<{ items: Connection[] }>('/api/connections'), [])
   const state = useLoad(() => get<EventList>(list()), [qs, outcome])
@@ -111,19 +107,6 @@ export function Events({ open }: { open: string | null }) {
             </option>
           ))}
         </select>
-        <select aria-label="Provider" className="input w-auto max-sm:flex-1" value={f.provider} onChange={set('provider')}>
-          <option value="">Any provider</option>
-          <option value="slack">slack</option>
-          <option value="webhook">webhook</option>
-        </select>
-        <select aria-label="Connection" className="input w-auto max-w-44 max-sm:max-w-none max-sm:flex-1" value={f.connectionId} onChange={set('connectionId')}>
-          <option value="">Any connection</option>
-          {connections.data?.items.map((c) => (
-            <option key={c.id} value={c.id}>
-              {lineLabel(c)}
-            </option>
-          ))}
-        </select>
         {filtered ? (
           <button type="button" className="btn btn-quiet" onClick={clear}>
             Clear
@@ -169,7 +152,7 @@ export function Events({ open }: { open: string | null }) {
                 <Empty
                   title="No events yet"
                   action={
-                    <a href="#/connections" className="btn btn-primary">
+                    <a href={hrefTo('/connections')} className="btn btn-primary">
                       Add a connection
                     </a>
                   }
@@ -281,7 +264,7 @@ function EventBody({ e, connections, onChange }: { e: EventDetail; connections: 
       <Section id="p-deliveries" title="Deliveries" count={e.deliveries.length}>
         {e.deliveries.length === 0 ? (
           <p className="text-ink-2">
-            No deliveries. {e.state === 'unmatched' ? 'No enabled route matched this event.' : STATE_TEXT[e.state] + '.'} <a href="#/routes">Check routes</a>
+            No deliveries. {e.state === 'unmatched' ? 'No enabled route matched this event.' : STATE_TEXT[e.state] + '.'} <a href={hrefTo('/routes')}>Check routes</a>
           </p>
         ) : (
           <>

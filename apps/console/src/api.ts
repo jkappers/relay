@@ -8,6 +8,8 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly issues: Issue[] = [],
+    readonly code: string | null = null,
+    readonly body: unknown = null,
   ) {
     super(message)
   }
@@ -19,11 +21,28 @@ export class ApiError extends Error {
 }
 
 export const UNAUTHORIZED_EVENT = 'relay:unauthorized'
+export const CONNECTIONS_CHANGED_EVENT = 'relay:connections-changed'
+
+let tenant: string | null = null
+
+/** The connection the console is looking at. Tenant API calls go to /api/c/<id>/... */
+export const setTenant = (id: string | null) => {
+  tenant = id
+}
+export const currentTenant = () => tenant
+
+const ACCOUNT_PATH = /^\/api\/(session|users|connections|tokens|c\/)/
+
+export function apiPath(path: string): string {
+  if (!path.startsWith('/api/') || ACCOUNT_PATH.test(path)) return path
+  if (!tenant) throw new ApiError('no connection selected', 0)
+  return `/api/c/${tenant}${path.slice(4)}`
+}
 
 export async function request<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { 'X-Relay-Console': '1' }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
-  const res = await fetch(path, {
+  const res = await fetch(apiPath(path), {
     method,
     headers,
     credentials: 'same-origin',
@@ -34,7 +53,7 @@ export async function request<T = unknown>(method: string, path: string, body?: 
   if (!res.ok) {
     if (res.status === 401 && path !== '/api/session') window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
     const d = (data ?? {}) as { error?: string; message?: string; issues?: Issue[] }
-    throw new ApiError(d.message ?? d.error ?? `request failed (${res.status})`, res.status, d.issues ?? [])
+    throw new ApiError(d.message ?? d.error ?? `request failed (${res.status})`, res.status, d.issues ?? [], d.error ?? null, data)
   }
   return data as T
 }
@@ -47,14 +66,24 @@ export const del = (path: string) => request<void>('DELETE', path)
 
 export interface Connection {
   id: string
+  name: string | null
   provider: string
   teamId: string | null
   userId: string | null
   status: 'active' | 'revoked'
+  role: 'owner'
   createdAt: string
 }
 
-export interface WebhookCreated extends Connection {
+export type SignupMode = 'open' | 'closed'
+
+export interface Session {
+  user: { id: string; email: string }
+  connections: Connection[]
+  signup: SignupMode
+}
+
+export interface WebhookCreated extends Omit<Connection, 'role' | 'teamId' | 'userId'> {
   url: string
   secret: string
 }
@@ -84,7 +113,7 @@ export interface Destination {
 export interface Route {
   id: string
   name: string
-  connectionId: string | null
+  connectionId: string
   eventType: string
   textContains: string | null
   textRegex: string | null

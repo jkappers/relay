@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from 'react'
 import { get, type Connection, type EventPage, type Overview as OverviewData } from '../api'
 import { Async, cx, Empty, Page, SectionHead, Time } from '../components'
-import { useLoad } from '../hooks'
+import { hrefTo, useLoad } from '../hooks'
 import { Icon } from '../icons'
 import { Lamp } from '../trace'
 import { CallLog, CallLogSkeleton, KeyHints } from './CallLog'
@@ -42,11 +42,11 @@ function Counts({ o }: { o: OverviewData }) {
     <div className="flex min-h-8 flex-wrap items-center justify-between gap-x-6 gap-y-1 rounded-ctl border border-rule bg-raised px-3 py-1">
       <ul aria-label="Last 24 hours" className="flex flex-wrap items-center gap-x-4 gap-y-0.5">
         <li className="text-xs font-medium text-ink-3">24h</li>
-        <Count n={o.events} label="calls" href="#/events" />
+        <Count n={o.events} label="calls" href={hrefTo('/events')} />
         <li className="text-ink-3">· Deliveries:</li>
-        <Count n={o.deliveries.succeeded} label="delivered" href="#/deliveries" />
-        <Count n={o.deliveries.pending} label="pending" href="#/deliveries" tone={o.deliveries.pending ? 'warn' : undefined} />
-        <Count n={failed} label="failed" href="#/deliveries" tone={failed ? 'bad' : undefined} />
+        <Count n={o.deliveries.succeeded} label="delivered" href={hrefTo('/deliveries')} />
+        <Count n={o.deliveries.pending} label="pending" href={hrefTo('/deliveries')} tone={o.deliveries.pending ? 'warn' : undefined} />
+        <Count n={failed} label="failed" href={hrefTo('/deliveries')} tone={failed ? 'bad' : undefined} />
         {o.failedActions ? <Count n={o.failedActions} label="actions failed" tone="bad" /> : null}
       </ul>
       <p className="text-xs text-ink-3">
@@ -96,7 +96,7 @@ export function Overview({ open }: { open: string | null }) {
   return (
     <Page
       title="Overview"
-      meta="Last 24 hours, all connections"
+      meta="Last 24 hours on this connection"
       actions={
         <button type="button" className="btn btn-sm" onClick={refresh}>
           <Icon name="refresh" className="size-3.5" />
@@ -124,7 +124,7 @@ export function Overview({ open }: { open: string | null }) {
               <Empty
                 title="No calls yet"
                 action={
-                  <a href="#/connections" className="btn btn-primary">
+                  <a href={hrefTo('/connections')} className="btn btn-primary">
                     Add a connection
                   </a>
                 }
@@ -138,7 +138,7 @@ export function Overview({ open }: { open: string | null }) {
             <>
               <CallLog label="Latest calls" base="/" open={open} events={d.events} connections={d.connections} onChange={refresh} />
               <div className="flex min-h-8 items-center justify-between gap-4">
-                <a href="#/events" className="text-xs font-medium">
+                <a href={hrefTo('/events')} className="text-xs font-medium">
                   All events and filters
                 </a>
                 <KeyHints />

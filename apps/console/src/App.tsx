@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { del, get, UNAUTHORIZED_EVENT } from './api'
+import { ApiError, CONNECTIONS_CHANGED_EVENT, del, get, setTenant, UNAUTHORIZED_EVENT, type Connection, type Session, type SignupMode } from './api'
 import { cx } from './components'
-import { focusRow, navigate, parseRoute, useHashPath } from './hooks'
+import { at, focusRow, navigate, parseRoute, splitTenant, useHashPath } from './hooks'
 import { Icon, RelayMark, type IconName } from './icons'
+import { Onboarding } from './pages/Onboarding'
+import { jackCode, lineLabel } from './patch'
+import { Lamp } from './trace'
 import { Connections } from './pages/Connections'
 import { Deliveries } from './pages/Deliveries'
 import { Destinations } from './pages/Destinations'
@@ -60,9 +63,63 @@ function ThemeSwitch() {
   )
 }
 
+function Switcher({ connections, current }: { connections: Connection[]; current: Connection }) {
+  const ref = useRef<HTMLDetailsElement>(null)
+  useEffect(() => {
+    if (ref.current) ref.current.open = false
+  }, [current.id])
+  return (
+    <details ref={ref} className="group relative px-2 pb-2">
+      <summary className="flex h-8 cursor-pointer list-none items-center gap-2 rounded-ctl border border-line bg-raised px-2 hover:border-edge [&::-webkit-details-marker]:hidden">
+        <span className="sr-only">Connection: </span>
+        <span className="jack-code" title={current.provider}>
+          {jackCode(current.provider)}
+        </span>
+        <span className="min-w-0 flex-1 truncate font-medium" title={lineLabel(current)}>
+          {lineLabel(current)}
+        </span>
+        <Lamp state={current.status === 'active' ? 'ok' : 'off'} className="size-2" />
+        <span className="sr-only">{current.status}</span>
+        <Icon name="back" className="size-3 -rotate-90 text-ink-3 group-open:rotate-90" />
+      </summary>
+      <div className="absolute inset-x-2 top-9 z-40 rounded-ctl border border-line bg-raised py-1 shadow-panel">
+        <ul aria-label="Your connections" className="max-h-80 overflow-y-auto">
+          {connections.map((c) => (
+            <li key={c.id}>
+              <a
+                href={`#/c/${c.id}`}
+                aria-current={c.id === current.id ? 'true' : undefined}
+                className={cx('flex h-7 items-center gap-2 px-2 text-ink no-underline hover:bg-hover hover:text-ink', c.id === current.id && 'bg-sel')}
+              >
+                <span className="jack-code" title={c.provider}>
+                  {jackCode(c.provider)}
+                </span>
+                <span className="min-w-0 flex-1 truncate" title={lineLabel(c)}>
+                  {lineLabel(c)}
+                </span>
+                <Lamp state={c.status === 'active' ? 'ok' : 'off'} className="size-2" />
+                <span className="sr-only">{c.status}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+        <a href={`#/c/${current.id}/connections`} className="mt-1 flex h-7 items-center gap-2 border-t border-rule px-2 pt-1 text-xs font-medium no-underline">
+          <Icon name="plus" className="size-3" />
+          Add a connection
+        </a>
+      </div>
+    </details>
+  )
+}
+
 export function App() {
   const path = useHashPath()
-  const { base, event } = parseRoute(path)
+  const { connectionId: pathTenant, inner } = splitTenant(path)
+  const [session, setSession] = useState<Session | null>(null)
+  const [signup, setSignup] = useState<SignupMode>('closed')
+  const tenant = session?.connections.find((c) => c.id === pathTenant) ?? null
+  setTenant(tenant?.id ?? null)
+  const { base, event } = parseRoute(inner)
   const fromList = useRef(false)
   const prev = useRef(event)
   if (prev.current !== event) {
@@ -73,9 +130,18 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false)
 
   const check = useCallback(() => {
-    get('/api/session').then(
-      () => setAuthed(true),
-      () => setAuthed(false),
+    get<Session>('/api/session').then(
+      (s) => {
+        setSession(s)
+        setSignup(s.signup)
+        setAuthed(true)
+      },
+      (e: unknown) => {
+        const body = e instanceof ApiError ? (e.body as { signup?: SignupMode } | null) : null
+        setSignup(body?.signup === 'open' ? 'open' : 'closed')
+        setSession(null)
+        setAuthed(false)
+      },
     )
   }, [])
 
@@ -83,16 +149,27 @@ export function App() {
     check()
     const on = () => {
       setAuthed(false)
+      setSession(null)
       navigate('/login')
     }
     window.addEventListener(UNAUTHORIZED_EVENT, on)
-    return () => window.removeEventListener(UNAUTHORIZED_EVENT, on)
+    window.addEventListener(CONNECTIONS_CHANGED_EVENT, check)
+    return () => {
+      window.removeEventListener(UNAUTHORIZED_EVENT, on)
+      window.removeEventListener(CONNECTIONS_CHANGED_EVENT, check)
+    }
   }, [check])
 
+  const first = session?.connections[0]
   useEffect(() => {
     if (authed === false && path !== '/login') navigate('/login')
-    if (authed === true && path === '/login') navigate('/')
-  }, [authed, path])
+    if (authed !== true || !session) return
+    if (!first) {
+      if (path !== '/') navigate('/')
+      return
+    }
+    if (!tenant) navigate(`/c/${first.id}${path === '/login' || pathTenant ? '' : path === '/' ? '' : path}`)
+  }, [authed, path, session, first, tenant, pathTenant])
 
   useEffect(() => {
     setMenuOpen(false)
@@ -103,7 +180,7 @@ export function App() {
   const closePanel = useCallback(() => {
     if (!event) return
     if (fromList.current) window.history.back()
-    else window.location.replace(`#${base}`)
+    else window.location.replace(`#${at(base)}`)
     fromList.current = false
   }, [base, event])
 
@@ -120,15 +197,25 @@ export function App() {
       </p>
     )
   }
-  if (!authed) return <Login onLogin={() => setAuthed(true)} />
-
-  const active = NAV.find(([p]) => p === base)?.[0] ?? null
+  if (!authed) return <Login signup={signup} onLogin={check} />
 
   const signOut = async () => {
     await del('/api/session').catch(() => undefined)
+    setSession(null)
     setAuthed(false)
     navigate('/login')
   }
+
+  if (session && session.connections.length === 0) return <Onboarding email={session.user.email} onSignOut={signOut} />
+  if (!session || !tenant) {
+    return (
+      <p role="status" className="p-6 text-sm text-ink-2">
+        Opening connection…
+      </p>
+    )
+  }
+
+  const active = NAV.find(([p]) => p === base)?.[0] ?? null
 
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[var(--spacing-rail)_minmax(0,1fr)]">
@@ -138,7 +225,7 @@ export function App() {
         </a>
         <header className="sticky top-0 z-30 border-b border-rule bg-rail md:flex md:h-dvh md:flex-col md:border-b-0">
           <div className="flex h-12 items-center justify-between gap-3 px-3 md:h-13 md:px-4">
-            <a href="#/" className="flex items-center gap-2 text-ink no-underline hover:text-ink">
+            <a href={`#${at('/')}`} className="flex items-center gap-2 text-ink no-underline hover:text-ink">
               <RelayMark className="size-5" />
               <span className="font-semibold tracking-tight">Relay</span>
             </a>
@@ -153,13 +240,16 @@ export function App() {
               <Icon name={menuOpen ? 'close' : 'menu'} />
             </button>
           </div>
+          <div className={cx('md:block', menuOpen ? 'block' : 'hidden')}>
+            <Switcher connections={session.connections} current={tenant} />
+          </div>
           <div id="rail-nav" className={cx('flex-1 flex-col justify-between gap-6 px-2 pb-3 md:flex', menuOpen ? 'flex' : 'hidden')}>
             <nav aria-label="Main">
               <ul className="flex flex-col gap-px">
                 {NAV.map(([p, label, icon]) => (
                   <li key={p}>
                     <a
-                      href={`#${p}`}
+                      href={`#${at(p)}`}
                       aria-current={active === p ? 'page' : undefined}
                       className={cx(
                         'flex h-7 items-center gap-2.5 rounded-ctl px-2 font-medium no-underline',
@@ -174,6 +264,9 @@ export function App() {
               </ul>
             </nav>
             <div className="flex flex-col gap-2 border-t border-rule pt-3">
+              <p className="truncate px-2 text-xs text-ink-3" title={session.user.email}>
+                {session.user.email}
+              </p>
               <ThemeSwitch />
               <button type="button" className="btn btn-quiet justify-start px-2" onClick={signOut}>
                 <Icon name="exit" className="size-3.5" />
@@ -184,9 +277,11 @@ export function App() {
         </header>
       </div>
       <main id="main" tabIndex={-1} className={cx('min-w-0 px-4 py-3 outline-none md:px-6 md:py-4', event && 'xl:mr-panel')}>
-        <div className="mx-auto max-w-[90rem]">{view(base, event)}</div>
+        <div key={tenant.id} className="mx-auto max-w-[90rem]">
+          {view(base, event)}
+        </div>
       </main>
-      {event ? <EventPanel id={event} onClose={closePanel} /> : null}
+      {event ? <EventPanel key={tenant.id} id={event} onClose={closePanel} /> : null}
     </div>
   )
 }
