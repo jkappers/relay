@@ -23,6 +23,7 @@ describe('agent config', () => {
       maxTurns: 8,
       timeoutSeconds: 300,
       maxMutatingActions: 3,
+      toolDestinationIds: [],
     })
   })
 

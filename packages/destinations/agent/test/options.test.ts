@@ -101,6 +101,33 @@ describe('buildSdkOptions', () => {
   })
 })
 
+describe('tool destinations in the allowlist', () => {
+  it('adds them by exact name without loosening any built-in restriction', async () => {
+    const base = build()
+    const o = build({ toolNames: ['reply', 'thread_history', 'lookup_order'] })
+    expect(o.tools).toEqual([])
+    expect(o.allowedTools).toEqual(['mcp__relay__reply', 'mcp__relay__thread_history', 'mcp__relay__lookup_order'])
+    expect(o.disallowedTools).toEqual(base.disallowedTools)
+    expect(o.permissionMode).toBe('dontAsk')
+    expect(o.strictMcpConfig).toBe(true)
+    expect(Object.keys(o.mcpServers ?? {})).toEqual(['relay'])
+    const opts = { signal: new AbortController().signal, toolUseID: 't', requestId: 'r' } as never
+    expect(await o.canUseTool!('mcp__relay__lookup_order', {}, opts)).toEqual({ behavior: 'allow' })
+    expect(await o.canUseTool!('lookup_order', {}, opts)).toMatchObject({ behavior: 'deny' })
+    expect(await o.canUseTool!('mcp__relay__other_tool', {}, opts)).toMatchObject({ behavior: 'deny' })
+    const hook = o.hooks!.PreToolUse![0]!.hooks[0]!
+    const call = (tool_name: string) =>
+      hook({ hook_event_name: 'PreToolUse', tool_name, tool_input: {}, tool_use_id: 'x' } as never, 'x', { signal: new AbortController().signal })
+    expect(await call('mcp__relay__lookup_order')).toEqual({})
+    expect(await call('WebFetch')).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } })
+  })
+
+  it('refuses names that are not plain slugs, and duplicates', () => {
+    for (const bad of ['Bash', 'a b', 'x*', '', 'mcp__evil__x__'.toUpperCase()]) expect(() => build({ toolNames: [bad] }), bad).toThrow()
+    expect(() => build({ toolNames: ['reply', 'reply'] })).toThrow()
+  })
+})
+
 describe('temp dir', () => {
   it('is not created by the pure builder', () => {
     expect(existsSync('/tmp/relay-agent-test')).toBe(false)

@@ -100,6 +100,7 @@ export function useHarness(opts: { backoffBaseMs?: number; backoffCapMs?: number
         execute: h.execute,
         runtimes: h.runtimes,
         runner,
+        cipher: h.cipher,
         backoffBaseMs: 10,
         backoffCapMs: 50,
       })
@@ -192,6 +193,8 @@ export async function dispatchJobs(h: Harness): Promise<{ deliveryId: string; st
 export interface ReceivedRequest {
   headers: IncomingMessage['headers']
   body: string
+  method?: string
+  path?: string
 }
 export type Handler = (req: ReceivedRequest, res: ServerResponse) => void | Promise<void>
 
@@ -209,7 +212,7 @@ export async function startReceiver(handlers: Handler | Handler[]): Promise<Rece
     const chunks: Buffer[] = []
     req.on('data', (c) => chunks.push(c))
     req.on('end', () => {
-      const received = { headers: req.headers, body: Buffer.concat(chunks).toString('utf8') }
+      const received = { headers: req.headers, body: Buffer.concat(chunks).toString('utf8'), method: req.method, path: req.url }
       requests.push(received)
       const handler = Array.isArray(handlers)
         ? handlers[Math.min(requests.length - 1, handlers.length - 1)]!
