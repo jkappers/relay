@@ -17,6 +17,8 @@ import {
   createRoute,
   createRouteFields,
   createRouteInput,
+  createToolDestination,
+  createToolDestinationInput,
   deleteDestination,
   deleteRoute,
   isMember,
@@ -178,6 +180,7 @@ const deliveriesQuery = z.object({
 const createDestinationBody = z.discriminatedUnion('kind', [
   createDestinationInput.extend({ kind: z.literal('http') }),
   createAgentDestinationInput.extend({ kind: z.literal('agent') }),
+  createToolDestinationInput.extend({ kind: z.literal('tool') }),
 ])
 
 const routeBody = createRouteInput
@@ -497,6 +500,12 @@ export function consoleApi(deps: ConsoleApiDeps) {
     const body = c.req.valid('json') as z.output<typeof createDestinationBody>
     if (body.kind === 'http') {
       const { destination, secret } = await createDestination(db, deps.cipher, c.var.connectionId, body)
+      mutated('destination', 'create')
+      return c.json({ ...serializeDestination(destination), secret }, 201)
+    }
+    if (body.kind === 'tool') {
+      const { kind: _kind, ...input } = body
+      const { destination, secret } = await createToolDestination(db, deps.cipher, c.var.connectionId, input)
       mutated('destination', 'create')
       return c.json({ ...serializeDestination(destination), secret }, 201)
     }
