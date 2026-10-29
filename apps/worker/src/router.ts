@@ -7,6 +7,7 @@ import {
   type Db,
   type DispatchJob,
   type Envelope,
+  type ProviderRuntime,
   type Queue,
   type RouteJob,
 } from '@relay/core'
@@ -16,6 +17,9 @@ export interface RouterDeps {
   db: Db
   queue: Queue
   metrics: WorkerMetrics
+  runtimes: Record<string, ProviderRuntime>
+  recheckDelayMs?: number
+  recheckMaxAgeMs?: number
 }
 
 export function createRouter(deps: RouterDeps) {
@@ -39,9 +43,26 @@ export function createRouter(deps: RouterDeps) {
       return
     }
 
-    // M3: the loop guard (provider isSelfEcho check) goes here, before any route is matched.
-
     const envelope = event.envelope as Envelope
+    const runtime = deps.runtimes[event.provider]
+    if (runtime && (await runtime.isSelfEcho(envelope, connection))) {
+      await markRouted(event.id)
+      metrics.routerEvents.inc({ outcome: 'skipped_echo' })
+      log.info('router: skipping echo of a relay message', { eventId: event.id })
+      return
+    }
+    // The echo can arrive before the action commits its sent_messages row. Look once more after a delay.
+    const ageMs = Date.now() - event.receivedAt.getTime()
+    if (!job.recheck && envelope.actor !== null && envelope.actor === connection.userId && ageMs < (deps.recheckMaxAgeMs ?? 30_000)) {
+      await queue.send<RouteJob>(
+        QUEUES.route,
+        { eventId: event.id, recheck: true },
+        { singletonKey: event.id, startAfter: new Date(Date.now() + (deps.recheckDelayMs ?? 5_000)) },
+      )
+      metrics.routerEvents.inc({ outcome: 'echo_recheck' })
+      return
+    }
+
     const candidates = await db
       .select()
       .from(schema.routes)

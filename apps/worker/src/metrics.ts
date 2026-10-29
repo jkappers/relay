@@ -1,11 +1,12 @@
-import { MetricsRegistry } from '@relay/core'
+import { createActionCounters, MetricsRegistry } from '@relay/core'
 
-export const ROUTER_OUTCOMES = ['matched', 'unmatched', 'skipped_inactive'] as const
+export const ROUTER_OUTCOMES = ['matched', 'unmatched', 'skipped_inactive', 'skipped_echo', 'echo_recheck'] as const
 export const ATTEMPT_OUTCOMES = ['success', 'retry', 'failed_exhausted', 'failed_non_retryable'] as const
 
 export function createWorkerMetrics(registry = new MetricsRegistry()) {
   return {
     registry,
+    ...createActionCounters(registry),
     routerEvents: registry.counter(
       'relay_router_events_total',
       'Events handled by the router, by outcome.',

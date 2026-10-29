@@ -1,5 +1,11 @@
+import { randomUUID } from 'node:crypto'
 import { and, eq, sql } from 'drizzle-orm'
 import {
+  computeAllowed,
+  mintReplyToken,
+  syncResponseSchema,
+  type ActionsJob,
+  type ProviderRuntime,
   computeBackoffMs,
   computeSignature,
   log,
@@ -23,6 +29,10 @@ export interface DispatcherDeps {
   metrics: WorkerMetrics
   backoffBaseMs: number
   backoffCapMs: number
+  runtimes: Record<string, ProviderRuntime>
+  replyKey: Buffer
+  publicUrl: string
+  replyTtlSeconds: number
   fetch?: typeof fetch
   random?: () => number
   nowSeconds?: () => number
@@ -70,8 +80,9 @@ export function createDispatcher(deps: DispatcherDeps) {
     eventId: string,
     attempt: number,
     envelope: object,
+    reply: object | null,
   ): Promise<Outcome> {
-    const body = JSON.stringify({ ...envelope, delivery: { id: deliveryId, attempt } })
+    const body = JSON.stringify({ ...envelope, ...(reply ? { reply } : {}), delivery: { id: deliveryId, attempt } })
     const timestamp = String(nowSeconds())
     let res: Response
     try {
@@ -145,31 +156,58 @@ export function createDispatcher(deps: DispatcherDeps) {
       return
     }
 
+    const jti = randomUUID()
     const [claimed] = await db
       .update(schema.deliveries)
-      .set({ attempts: sql`${schema.deliveries.attempts} + 1`, updatedAt: new Date() })
+      .set({ attempts: sql`${schema.deliveries.attempts} + 1`, lastReplyJti: jti, updatedAt: new Date() })
       .where(pending)
       .returning({ attempts: schema.deliveries.attempts })
     if (!claimed) return
     const attempt = claimed.attempts
 
     const secret = deps.cipher.decrypt(destination.secretCiphertext)
-    const outcome = await send(destination, secret, delivery.id, event.id, attempt, event.envelope as object)
+    const allowed = computeAllowed(deps.runtimes[event.provider], destination.allowedActions)
+    const reply =
+      allowed.length > 0
+        ? {
+            actionsUrl: `${deps.publicUrl}/actions`,
+            token: mintReplyToken(deps.replyKey, {
+              deliveryId: delivery.id,
+              allowed,
+              ttlSeconds: deps.replyTtlSeconds,
+              nowSeconds: nowSeconds(),
+              jti,
+            }).token,
+            allowed,
+          }
+        : null
+    const outcome = await send(destination, secret, delivery.id, event.id, attempt, event.envelope as object, reply)
     const now = new Date()
 
     if (outcome.ok) {
-      await db
-        .update(schema.deliveries)
-        .set({
-          status: 'succeeded',
-          lastStatusCode: outcome.statusCode,
-          lastError: null,
-          responseBody: outcome.body,
-          nextAttemptAt: null,
-          completedAt: now,
-          updatedAt: now,
-        })
-        .where(pending)
+      const hasActionsKey =
+        outcome.body !== null && typeof outcome.body === 'object' && !Array.isArray(outcome.body) && 'actions' in outcome.body
+      const syncActions = hasActionsKey ? syncResponseSchema.safeParse(outcome.body) : null
+      const hasActions = Boolean(syncActions?.success && syncActions.data.actions.length > 0)
+      if (hasActionsKey && !hasActions) {
+        log.warn('dispatcher: ignoring invalid or empty actions in response', { deliveryId: delivery.id })
+      }
+      await db.transaction(async (tx) => {
+        await tx
+          .update(schema.deliveries)
+          .set({
+            status: 'succeeded',
+            lastStatusCode: outcome.statusCode,
+            lastError: null,
+            responseBody: outcome.body,
+            nextAttemptAt: null,
+            completedAt: now,
+            actionsDoneAt: hasActionsKey && !hasActions ? now : null,
+            updatedAt: now,
+          })
+          .where(pending)
+        if (hasActions) await queue.send<ActionsJob>(QUEUES.actions, { deliveryId: delivery.id }, { tx, singletonKey: delivery.id })
+      })
       metrics.deliveryAttempts.inc({ outcome: 'success' })
       return
     }
