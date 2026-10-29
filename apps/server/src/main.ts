@@ -11,11 +11,13 @@ async function main() {
   const queue = new PgBossQueue(config.DATABASE_URL)
   await queue.start()
   await queue.ensureQueue(QUEUES.route)
+  await queue.ensureQueue(QUEUES.dispatch)
 
   const app = createApp({
     config,
     db,
     queue,
+    cipher,
     connections: createConnectionStore(db, cipher),
     metrics: createServerMetrics(),
   })

@@ -36,6 +36,16 @@ export function createServerMetrics(registry = new MetricsRegistry()) {
       'Connections marked revoked by provider lifecycle events.',
       ['provider'] as const,
     ),
+    consoleLogins: registry.counter(
+      'relay_console_logins_total',
+      'Console login attempts by outcome.',
+      ['outcome'] as const,
+    ),
+    consoleMutations: registry.counter(
+      'relay_console_mutations_total',
+      'Successful console API changes by resource and action.',
+      ['resource', 'action'] as const,
+    ),
     oauthCallbacks: registry.counter(
       'relay_oauth_callbacks_total',
       'OAuth callback results.',

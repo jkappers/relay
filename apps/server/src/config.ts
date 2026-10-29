@@ -5,6 +5,7 @@ export const serverEnvSchema = coreEnvSchema.extend({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   PUBLIC_URL: z.url().transform((u) => u.replace(/\/+$/, '')),
   SLACK_API_BASE_URL: z.url().default('https://slack.com/api'),
+  CONSOLE_PASSWORD: z.string().min(16, 'must be at least 16 characters'),
   SLACK_SIGNING_SECRET: z.string().min(1),
   SLACK_CLIENT_ID: z.string().min(1),
   SLACK_CLIENT_SECRET: z.string().min(1),
