@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import {
   ConfigError,
   createActionExecutor,
@@ -9,13 +10,17 @@ import {
   log,
   PgBossQueue,
   QUEUES,
+  schema,
   type ActionsJob,
+  type AgentJob,
   type DispatchJob,
   type RouteJob,
 } from '@relay/core'
+import { createDemoRunner, createSdkRunner } from '@relay/destination-agent'
 import { createSlackRuntime } from '@relay/provider-slack'
 import { createWebhookRuntime } from '@relay/provider-webhook'
 import { createActionsHandler } from './actions'
+import { createAgentHandler } from './agent'
 import { workerEnvSchema } from './config'
 import { createDispatcher } from './dispatcher'
 import { startMetricsServer } from './http'
@@ -32,6 +37,7 @@ async function main() {
   await queue.ensureQueue(QUEUES.route)
   await queue.ensureQueue(QUEUES.dispatch)
   await queue.ensureQueue(QUEUES.actions)
+  await queue.ensureQueue(QUEUES.agent)
 
   const metrics = createWorkerMetrics()
   const runtimes = {
@@ -58,6 +64,16 @@ async function main() {
     publicUrl: config.PUBLIC_URL,
     replyTtlSeconds: config.REPLY_TOKEN_TTL_SECONDS,
   })
+  const handleAgent = createAgentHandler({
+    db,
+    queue,
+    metrics,
+    execute,
+    runtimes,
+    runner: config.RELAY_AGENT_RUNNER === 'fake' ? createDemoRunner() : createSdkRunner(),
+    backoffBaseMs: config.AGENT_BACKOFF_BASE_MS,
+    backoffCapMs: config.AGENT_BACKOFF_CAP_MS,
+  })
   const poll = { pollingIntervalSeconds: config.WORKER_POLL_SECONDS }
 
   await queue.work<RouteJob>(
@@ -81,12 +97,22 @@ async function main() {
     },
     { ...poll, batchSize: 1, localConcurrency: 1 },
   )
+  await queue.work<AgentJob>(
+    QUEUES.agent,
+    async (jobs) => {
+      for (const job of jobs) await handleAgent(job.data)
+    },
+    { ...poll, batchSize: 1, localConcurrency: config.AGENT_CONCURRENCY },
+  )
+  const [agentDest] = await db.select({ id: schema.destinations.id }).from(schema.destinations).where(eq(schema.destinations.kind, 'agent')).limit(1)
+  if (config.RELAY_AGENT_RUNNER === 'fake') log.warn('worker: using the fake agent runner (tests only)')
+  else if (agentDest && !process.env.ANTHROPIC_API_KEY) log.warn('worker: agent destinations exist but ANTHROPIC_API_KEY is not set; agent runs will fail')
   const sweep = createSweeper({ db, queue, metrics, graceMs: config.SWEEP_GRACE_SECONDS * 1000 })
   const runSweep = () => sweep().catch((err) => log.error('sweeper failed', { err: String(err) }))
   void runSweep()
   const sweepTimer = setInterval(() => void runSweep(), config.SWEEP_INTERVAL_SECONDS * 1000)
   const metricsServer = await startMetricsServer(metrics.registry, config.WORKER_METRICS_PORT)
-  log.info('worker started', { queues: [QUEUES.route, QUEUES.dispatch, QUEUES.actions], metricsPort: config.WORKER_METRICS_PORT })
+  log.info('worker started', { queues: [QUEUES.route, QUEUES.dispatch, QUEUES.actions, QUEUES.agent], metricsPort: config.WORKER_METRICS_PORT })
 
   const shutdown = async (signal: string) => {
     log.info('worker shutting down', { signal })

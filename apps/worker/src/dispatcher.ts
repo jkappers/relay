@@ -5,6 +5,7 @@ import {
   mintReplyToken,
   syncResponseSchema,
   type ActionsJob,
+  type AgentJob,
   type ProviderRuntime,
   computeBackoffMs,
   computeSignature,
@@ -75,6 +76,7 @@ export function createDispatcher(deps: DispatcherDeps) {
 
   async function send(
     destination: schema.DestinationRow,
+    url: string,
     secret: string,
     deliveryId: string,
     eventId: string,
@@ -86,7 +88,7 @@ export function createDispatcher(deps: DispatcherDeps) {
     const timestamp = String(nowSeconds())
     let res: Response
     try {
-      res = await doFetch(destination.url, {
+      res = await doFetch(url, {
         method: 'POST',
         redirect: 'manual',
         signal: AbortSignal.timeout(destination.timeoutMs),
@@ -156,6 +158,20 @@ export function createDispatcher(deps: DispatcherDeps) {
       return
     }
 
+    if (destination.kind === 'agent') {
+      await queue.send<AgentJob>(QUEUES.agent, { deliveryId: delivery.id }, { singletonKey: delivery.id })
+      return
+    }
+
+    if (!destination.url || !destination.secretCiphertext) {
+      await db
+        .update(schema.deliveries)
+        .set({ status: 'failed', lastError: 'destination misconfigured', completedAt: new Date(), nextAttemptAt: null, updatedAt: new Date() })
+        .where(pending)
+      metrics.deliveryAttempts.inc({ outcome: 'failed_non_retryable' })
+      return
+    }
+
     const jti = randomUUID()
     const [claimed] = await db
       .update(schema.deliveries)
@@ -181,7 +197,7 @@ export function createDispatcher(deps: DispatcherDeps) {
             allowed,
           }
         : null
-    const outcome = await send(destination, secret, delivery.id, event.id, attempt, event.envelope as object, reply)
+    const outcome = await send(destination, destination.url, secret, delivery.id, event.id, attempt, event.envelope as object, reply)
     const now = new Date()
 
     if (outcome.ok) {

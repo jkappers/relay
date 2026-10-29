@@ -7,6 +7,7 @@
   },
   "dependencies": {
     "@relay/core": "workspace:*",
+    "@relay/destination-agent": "workspace:*",
     "@relay/provider-slack": "workspace:*",
     "@relay/provider-webhook": "workspace:*",
     "drizzle-orm": "0.45.4",

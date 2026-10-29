@@ -1,6 +1,5 @@
 import { and, asc, isNotNull, isNull, lt, sql } from 'drizzle-orm'
-import { log, QUEUES, schema, type Db, type ActionsJob,
-  type DispatchJob, type Queue, type RouteJob } from '@relay/core'
+import { log, QUEUES, schema, type Db, type ActionsJob, type AgentJob, type DispatchJob, type Queue, type RouteJob } from '@relay/core'
 import type { WorkerMetrics } from './metrics'
 
 export const SWEEP_LIMIT = 100
@@ -32,15 +31,27 @@ export function createSweeper(deps: SweeperDeps) {
     }
 
     const d = schema.deliveries
+    // An agent run holds a lease while it works. A delivery with a live lease is not stuck.
     const stuckDeliveries = await db
-      .select({ id: d.id })
+      .select({ id: d.id, kind: schema.destinations.kind })
       .from(d)
-      .where(and(sql`${d.status} = 'pending'`, sql`coalesce(${d.nextAttemptAt}, ${d.updatedAt}) < ${cutoff.toISOString()}::timestamptz`))
+      .innerJoin(schema.destinations, sql`${schema.destinations.id} = ${d.destinationId}`)
+      .where(
+        and(
+          sql`${d.status} = 'pending'`,
+          sql`coalesce(${d.nextAttemptAt}, ${d.updatedAt}) < ${cutoff.toISOString()}::timestamptz`,
+          sql`not exists (select 1 from agent_runs r where r.delivery_id = ${d.id} and r.status = 'running' and r.lease_until > now())`,
+        ),
+      )
       .orderBy(asc(d.updatedAt))
       .limit(SWEEP_LIMIT)
     let deliveries = 0
     for (const row of stuckDeliveries) {
-      if (await queue.send<DispatchJob>(QUEUES.dispatch, { deliveryId: row.id }, { singletonKey: row.id })) deliveries++
+      const sent =
+        row.kind === 'agent'
+          ? await queue.send<AgentJob>(QUEUES.agent, { deliveryId: row.id }, { singletonKey: row.id })
+          : await queue.send<DispatchJob>(QUEUES.dispatch, { deliveryId: row.id }, { singletonKey: row.id })
+      if (sent) deliveries++
     }
 
     const stuckActions = await db
