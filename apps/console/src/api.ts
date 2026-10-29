@@ -1,3 +1,5 @@
+import type { DetailState, RoutedState } from './states'
+
 export interface Issue {
   path: string
   message: string
@@ -129,7 +131,32 @@ export interface Route {
   textRegex: string | null
   includeSubtypes: boolean
   enabled: boolean
+  selection: 'always' | 'classifier'
+  intent: string | null
+  classifierFallback: 'drop' | 'deliver'
+  actorIn: string[] | null
   destinationIds: string[]
+}
+
+export type ClassifierMode = 'off' | 'shadow' | 'enforce'
+
+export interface ClassifierSettings {
+  mode: ClassifierMode
+  dailyLimit: number
+}
+
+export interface RouteDecision {
+  id: string
+  mode: 'shadow' | 'enforce'
+  model: string
+  status: 'ok' | 'fallback' | 'budget_exceeded'
+  error: string | null
+  latencyMs: number
+  inputTokens: number
+  outputTokens: number
+  createdAt: string
+  candidates: { label: string; routeId: string; routeName: string | null; selected: boolean }[]
+  selected: { routeId: string; routeName: string | null }[]
 }
 
 export interface EventSummary {
@@ -153,7 +180,7 @@ export interface StatusCounts {
   failed: number
 }
 
-export type RoutedState = 'pending' | 'inactive' | 'echo' | 'routed' | 'unmatched'
+export type { RoutedState }
 
 export interface EventTrace {
   routed: RoutedState
@@ -217,8 +244,9 @@ export interface EventDetail {
   receivedAt: string
   routedAt: string | null
   dedupKey: string
-  state: 'pending' | 'skipped_inactive' | 'skipped_echo' | 'routed' | 'unmatched'
+  state: DetailState
   echo: boolean
+  classified: boolean
   routed: boolean
   envelope: unknown
   raw: unknown

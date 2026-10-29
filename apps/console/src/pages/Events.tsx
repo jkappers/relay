@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { get, post, type Connection, type EventDetail, type EventPage as EventList, type EventSummary } from '../api'
-import { Async, ConfirmButton, CopyId, Details, Empty, Fact, Facts, Json, Notice, Page, Segmented, SkeletonRows, Time } from '../components'
+import { get, post, type Connection, type EventDetail, type EventPage as EventList, type EventSummary, type RouteDecision } from '../api'
+import { Async, ConfirmButton, CopyId, cx, Details, Empty, Fact, Facts, Json, Notice, Page, Segmented, SkeletonRows, Time } from '../components'
 import { errorText, hrefTo, useDebounced, useLoad } from '../hooks'
 import { Icon } from '../icons'
 import { lineLabel, Patch } from '../patch'
+import { noDeliveriesText, STATE_TEXT } from '../states'
 import { Lamp, plural, StatusMark, TraceDetail, traceOfDetail, type LampState } from '../trace'
 import { CallLog, CallLogSkeleton, KeyHints } from './CallLog'
 import { DeliveryItem } from './Deliveries'
@@ -13,7 +14,7 @@ interface Filters {
   range: string
 }
 
-type Facet = '' | 'failed' | 'pending' | 'unrouted' | 'echo' | 'ok'
+type Facet = '' | 'failed' | 'pending' | 'unrouted' | 'classified' | 'echo' | 'ok'
 
 const empty: Filters = { type: '', range: '' }
 
@@ -30,6 +31,7 @@ const FACETS: readonly [Facet, string, string, LampState?][] = [
   ['failed', 'Failed', 'A delivery or action failed', 'bad'],
   ['pending', 'Pending', 'Waiting to route, or a delivery is retrying', 'warn'],
   ['unrouted', 'No route', 'No route matched, or the line is inactive', 'off'],
+  ['classified', 'Not picked', 'Only classifier routes matched, and the classifier (or its fallback) picked none', 'off'],
   ['echo', 'Echo', 'Skipped: echo of a Relay message'],
   ['ok', 'Delivered', 'Routed and every delivery succeeded', 'ok'],
 ]
@@ -188,14 +190,6 @@ export function Events({ open }: { open: string | null }) {
   )
 }
 
-const STATE_TEXT: Record<EventDetail['state'], string> = {
-  pending: 'Not routed yet',
-  routed: 'Routed',
-  unmatched: 'Routed, no route matched',
-  skipped_echo: 'Skipped: echo of a Relay message',
-  skipped_inactive: 'Skipped: connection not active',
-}
-
 const DELIVERY_LAMP: Record<string, LampState> = { succeeded: 'ok', pending: 'warn', failed: 'bad' }
 
 function eventType(e: EventDetail): string {
@@ -215,7 +209,99 @@ function Section({ id, title, count, children }: { id: string; title: string; co
   )
 }
 
-function EventBody({ e, connections, onChange }: { e: EventDetail; connections: Connection[]; onChange: () => void }) {
+const DECISION_STATUS: Record<RouteDecision['status'], [LampState, string]> = {
+  ok: ['ok', 'Answered'],
+  fallback: ['bad', 'Fallback: no usable answer'],
+  budget_exceeded: ['warn', 'Fallback: over the daily limit, no call'],
+}
+
+function DecisionPanel({ decision, error, onRetry }: { decision: RouteDecision | null | undefined; error: string | null; onRetry: () => void }) {
+  if (error) {
+    return (
+      <Section id="p-decision" title="Classifier decision">
+        <Notice tone="error" onRetry={onRetry}>
+          Could not load the decision: {error}
+        </Notice>
+      </Section>
+    )
+  }
+  if (!decision) return null
+  const [lamp, statusText] = DECISION_STATUS[decision.status]
+  const picked = decision.candidates.filter((c) => c.selected).length
+  return (
+    <Section id="p-decision" title="Classifier decision" count={decision.candidates.length}>
+      <Facts>
+        <Fact term="Mode">
+          <span className="font-mono text-xs">{decision.mode}</span>
+          {decision.mode === 'shadow' ? <span className="ml-2 text-xs text-ink-3">Every gated route was delivered. This shows what enforce would have done.</span> : null}
+        </Fact>
+        <Fact term="Status">
+          <span className={cx('inline-flex items-center gap-1.5', lamp === 'bad' ? 'text-bad-ink' : lamp === 'warn' ? 'text-warn-ink' : 'text-ink')}>
+            <Lamp state={lamp} className="size-2.5" />
+            {statusText}
+          </span>
+        </Fact>
+        {decision.error ? (
+          <Fact term="Error">
+            <code className="break-all text-bad-ink">{decision.error}</code>
+          </Fact>
+        ) : null}
+        <Fact term="Model">
+          <code className="text-ink-2">{decision.model}</code>
+        </Fact>
+        <Fact term="Latency">
+          <span className="font-mono text-xs">{decision.latencyMs} ms</span>
+        </Fact>
+        <Fact term="Tokens">
+          <span className="font-mono text-xs">
+            {decision.inputTokens} in / {decision.outputTokens} out
+          </span>
+        </Fact>
+        <Fact term="Decided">
+          <Time iso={decision.createdAt} abs />
+        </Fact>
+        <Fact term="Selected">
+          {picked} of {plural(decision.candidates.length, 'gated route', 'gated routes')}
+        </Fact>
+      </Facts>
+      <table aria-label="Classifier candidates" className="w-full table-fixed border-y border-rule text-left text-xs">
+        <thead className="text-ink-3">
+          <tr>
+            <th scope="col" className="w-12 py-1 pl-1 font-normal">
+              Label
+            </th>
+            <th scope="col" className="py-1 font-normal">
+              Route
+            </th>
+            <th scope="col" className="w-32 py-1 pr-1 text-right font-normal">
+              Result
+            </th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-rule border-t border-rule">
+          {decision.candidates.map((c) => (
+            <tr key={c.label} className="h-7">
+              <td className="pl-1 font-mono text-ink-2">{c.label}</td>
+              <td className="truncate">{c.routeName === null ? <span className="text-ink-3">deleted route {c.routeId.slice(0, 8)}</span> : c.routeName}</td>
+              <td className="pr-1 text-right">
+                <StatusMark value={c.selected ? 'succeeded' : 'off'} label={c.selected ? (decision.status === 'ok' ? 'picked' : 'fallback: deliver') : decision.status === 'ok' ? 'not picked' : 'fallback: drop'} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="text-xs text-ink-3">The first decision is final. Replays reuse it, limited to the routes that still match.</p>
+    </Section>
+  )
+}
+
+interface DecisionState {
+  data: RouteDecision | null | undefined
+  error: string | null
+  reload: () => void
+}
+
+function EventBody({ e, connections, onChange, decision }: { e: EventDetail; connections: Connection[]; onChange: () => void; decision: DecisionState }) {
   const [replayed, setReplayed] = useState(false)
   const connection = connections.find((c) => c.id === e.connectionId)
   return (
@@ -264,7 +350,7 @@ function EventBody({ e, connections, onChange }: { e: EventDetail; connections: 
       <Section id="p-deliveries" title="Deliveries" count={e.deliveries.length}>
         {e.deliveries.length === 0 ? (
           <p className="text-ink-2">
-            No deliveries. {e.state === 'unmatched' ? 'No enabled route matched this event.' : STATE_TEXT[e.state] + '.'} <a href={hrefTo('/routes')}>Check routes</a>
+            No deliveries. {noDeliveriesText(e.state)} <a href={hrefTo('/routes')}>Check routes</a>
           </p>
         ) : (
           <>
@@ -289,6 +375,7 @@ function EventBody({ e, connections, onChange }: { e: EventDetail; connections: 
           </>
         )}
       </Section>
+      <DecisionPanel decision={decision.data} error={decision.error} onRetry={decision.reload} />
       {e.actions.length > 0 ? (
         <Section id="p-actions" title="Actions" count={e.actions.length}>
           <ul aria-label="Actions" className="divide-y divide-rule border-y border-rule">
@@ -354,6 +441,11 @@ export function EventPanel({ id, onClose }: { id: string; onClose: () => void })
     },
     [id],
   )
+  const decision = useLoad(() => get<{ decision: RouteDecision | null }>(`/api/events/${id}/decision`), [id])
+  const reload = () => {
+    state.reload()
+    decision.reload()
+  }
   const ref = useRef<HTMLDivElement>(null)
   const close = useRef(onClose)
   close.current = onClose
@@ -381,7 +473,7 @@ export function EventPanel({ id, onClose }: { id: string; onClose: () => void })
           {e ? eventType(e) : 'Event'}
         </h2>
         {e ? <Time iso={e.receivedAt} className="text-xs text-ink-3" /> : null}
-        <button type="button" className="btn btn-sm btn-icon btn-quiet" aria-label="Refresh event" title="Refresh" onClick={state.reload}>
+        <button type="button" className="btn btn-sm btn-icon btn-quiet" aria-label="Refresh event" title="Refresh" onClick={reload}>
           <Icon name="refresh" className="size-3.5" />
         </button>
         <button type="button" className="btn btn-sm btn-icon btn-quiet" aria-label="Close panel" title="Close (Esc)" onClick={onClose}>
@@ -392,7 +484,13 @@ export function EventPanel({ id, onClose }: { id: string; onClose: () => void })
         {e && state.data ? (
           <>
             {state.error ? <Notice tone="error" onRetry={state.reload}>Refresh failed: {state.error}</Notice> : null}
-            <EventBody key={e.id} e={e} connections={state.data.connections} onChange={state.reload} />
+            <EventBody
+              key={e.id}
+              e={e}
+              connections={state.data.connections}
+              onChange={reload}
+              decision={{ data: decision.data?.decision, error: decision.error, reload: decision.reload }}
+            />
           </>
         ) : state.error ? (
           <Notice tone="error" onRetry={state.reload}>

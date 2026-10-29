@@ -1,8 +1,9 @@
-import type { EventDetail, EventTrace, RoutedState, StatusCounts } from './api'
+import type { EventDetail, EventTrace, StatusCounts } from './api'
 import { condenseCause } from './cause'
 import { cx } from './components'
+import { DETAIL_STATE, ROUTED_SHORT, ROUTED_TEXT, type LampState } from './states'
 
-export type LampState = 'ok' | 'warn' | 'bad' | 'off'
+export type { LampState }
 
 export const STAGES = [
   ['received', 'Received', 'RCV'],
@@ -20,14 +21,6 @@ export interface StageView {
   code: string
   state: LampState
   text: string
-}
-
-const ROUTED_TEXT: Record<RoutedState, [LampState, string]> = {
-  pending: ['warn', 'Waiting to be routed'],
-  routed: ['ok', 'Routed to destinations'],
-  echo: ['ok', 'Skipped: echo of a Relay message'],
-  unmatched: ['off', 'Not routed: no route matched'],
-  inactive: ['off', 'Not routed: connection not active'],
 }
 
 export const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
@@ -63,14 +56,6 @@ const count = (rows: { status: string }[]): StatusCounts => ({
   succeeded: rows.filter((r) => r.status === 'succeeded').length,
   failed: rows.filter((r) => r.status === 'failed').length,
 })
-
-const DETAIL_STATE: Record<EventDetail['state'], RoutedState> = {
-  pending: 'pending',
-  routed: 'routed',
-  unmatched: 'unmatched',
-  skipped_echo: 'echo',
-  skipped_inactive: 'inactive',
-}
 
 export function traceOfDetail(e: EventDetail): EventTrace {
   return {
@@ -190,9 +175,7 @@ export function outcomeOf(t: EventTrace): Outcome {
   if (t.failedDelivery) return { text: condenseCause(t.failedDelivery.lastError), full: t.failedDelivery.lastError ?? 'Delivery failed with no error text', tone: 'bad' }
   if (t.actions.failed) return { text: `${t.actions.failed} action failed`, full: acted!.text, tone: 'bad' }
   if (t.routed === 'pending') return { text: 'routing', full: routed!.text, tone: 'warn' }
-  if (t.routed !== 'routed') return { text: SHORT[t.routed], full: routed!.text, tone: 'plain' }
+  if (t.routed !== 'routed') return { text: ROUTED_SHORT[t.routed], full: routed!.text, tone: 'plain' }
   if (t.deliveries.pending) return { text: `${t.deliveries.pending} pending`, full: delivered!.text, tone: 'warn' }
   return { text: `${t.deliveries.succeeded} delivered`, full: delivered!.text, tone: 'plain' }
 }
-
-const SHORT: Record<RoutedState, string> = { pending: 'routing', routed: 'routed', echo: 'echo skipped', unmatched: 'no route', inactive: 'line inactive' }

@@ -1,20 +1,11 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
-import { ApiError, currentTenant, del, get, post, put, type Connection, type Destination, type Route } from '../api'
-import { Async, Check, ConfirmButton, Empty, Field, FormError, Page, SectionHead, SkeletonRows, Time } from '../components'
+import { ApiError, currentTenant, del, get, post, put, type ClassifierMode, type ClassifierSettings, type Connection, type Destination, type Route } from '../api'
+import { Async, Check, ConfirmButton, Empty, Field, FormError, Page, SectionHead, Segmented, SkeletonRows, Time } from '../components'
 import { Icon } from '../icons'
 import { lineLabel, Patch } from '../patch'
+import { MAX_INTENT, matchFields, routeBody, routeFormProblems, type RouteForm } from '../route-form'
 import { StatusMark } from '../trace'
 import { errorText, hrefTo, useDebounced, useLoad } from '../hooks'
-
-interface RouteForm {
-  name: string
-  eventType: string
-  textContains: string
-  textRegex: string
-  includeSubtypes: boolean
-  enabled: boolean
-  destinationIds: string[]
-}
 
 const DEFAULT_EVENT_TYPES: Record<string, string> = { slack: 'slack.message.*', discord: 'discord.message.*', webhook: 'webhook.*' }
 const defaultEventType = (provider: string | undefined) => DEFAULT_EVENT_TYPES[provider ?? ''] ?? 'slack.message.*'
@@ -32,6 +23,10 @@ const blank: RouteForm = {
   includeSubtypes: false,
   enabled: true,
   destinationIds: [],
+  selection: 'always',
+  intent: '',
+  classifierFallback: 'drop',
+  actorIn: '',
 }
 
 const toForm = (r: Route): RouteForm => ({
@@ -42,19 +37,102 @@ const toForm = (r: Route): RouteForm => ({
   includeSubtypes: r.includeSubtypes,
   enabled: r.enabled,
   destinationIds: r.destinationIds,
-})
-
-const matchFields = (f: RouteForm) => ({
-  eventType: f.eventType,
-  textContains: f.textContains || null,
-  textRegex: f.textRegex || null,
-  includeSubtypes: f.includeSubtypes,
-  enabled: true,
+  selection: r.selection,
+  intent: r.intent ?? '',
+  classifierFallback: r.classifierFallback,
+  actorIn: (r.actorIn ?? []).join(', '),
 })
 
 interface PreviewResult {
   scanned: number
-  matches: { id: string; receivedAt: string; type: string; subtype: string | null; text: string | null }[]
+  matches: { id: string; receivedAt: string; type: string; subtype: string | null; actor: string | null; text: string | null }[]
+}
+
+const MODES: readonly (readonly [ClassifierMode, string, string])[] = [
+  ['off', 'Off', 'Classifier routes deliver every match. No calls.'],
+  ['shadow', 'Shadow', 'Call and record, but deliver every match.'],
+  ['enforce', 'Enforce', 'Deliver only what the classifier picks.'],
+]
+
+function ClassifierBar() {
+  const state = useLoad(() => get<ClassifierSettings>('/api/classifier'), [])
+  const [draft, setDraft] = useState<{ mode: ClassifierMode; dailyLimit: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const current = state.data
+  const value = draft ?? (current ? { mode: current.mode, dailyLimit: String(current.dailyLimit) } : null)
+  const limit = value ? Number(value.dailyLimit) : NaN
+  const limitOk = value !== null && /^\d+$/.test(value.dailyLimit) && limit <= 100_000
+  const dirty = value !== null && current !== null && (value.mode !== current.mode || limit !== current.dailyLimit)
+
+  async function save(e: FormEvent) {
+    e.preventDefault()
+    if (!value || !limitOk) return
+    setBusy(true)
+    setError(null)
+    setSaved(false)
+    try {
+      await put<ClassifierSettings>('/api/classifier', { mode: value.mode, dailyLimit: limit })
+      setDraft(null)
+      setSaved(true)
+      state.reload()
+    } catch (err) {
+      setError(errorText(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form onSubmit={save} aria-labelledby="classifier-title" className="flex flex-col gap-1.5 rounded-ctl border border-rule bg-raised px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <h2 id="classifier-title" className="text-xs font-semibold text-ink-2">
+          Classifier
+        </h2>
+        {state.error ? <span className="text-bad-ink">Could not load: {state.error}</span> : null}
+        {value ? (
+          <>
+            <Segmented
+              label="Classifier mode"
+              value={value.mode}
+              onChange={(mode) => {
+                setSaved(false)
+                setDraft({ ...value, mode })
+              }}
+              options={MODES}
+            />
+            <label className="flex items-center gap-2 text-xs text-ink-2">
+              Daily limit
+              <input
+                className="input w-24 font-mono text-xs"
+                inputMode="numeric"
+                aria-invalid={!limitOk}
+                value={value.dailyLimit}
+                onChange={(e) => {
+                  setSaved(false)
+                  setDraft({ ...value, dailyLimit: e.target.value.trim() })
+                }}
+              />
+            </label>
+            <button className="btn btn-sm" disabled={busy || !dirty || !limitOk}>
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+            {saved ? (
+              <span role="status" className="text-xs text-ok-ink">
+                Saved
+              </span>
+            ) : null}
+            {!limitOk ? <span className="text-xs text-bad-ink">Whole number, 0 to 100000.</span> : null}
+          </>
+        ) : null}
+      </div>
+      <p className="text-xs text-ink-3">
+        {value?.mode === 'off' ? <span className="text-warn-ink">Off makes classifier routes deliver every match. No calls.</span> : MODES.find((m) => m[0] === value?.mode)?.[2]} The daily limit counts calls per UTC day for this connection; over it, each gated route uses its fallback.
+      </p>
+      <FormError error={error} />
+    </form>
+  )
 }
 
 function Preview({ form }: { form: RouteForm }) {
@@ -109,6 +187,7 @@ function Preview({ form }: { form: RouteForm }) {
                     <a href={hrefTo(`/events/${m.id}`)} className="shrink-0 font-mono text-xs">
                       {m.type}
                     </a>
+                    {m.actor ? <code className="max-w-24 shrink-0 truncate text-xs text-ink-3">{m.actor}</code> : null}
                     <span className="min-w-0 flex-1 truncate text-ink-2">{m.text ?? ''}</span>
                     <Time iso={m.receivedAt} className="shrink-0 text-xs text-ink-3" />
                   </li>
@@ -158,9 +237,14 @@ function RouteEditor({
 
   async function submit(e: FormEvent) {
     e.preventDefault()
+    const problems = routeFormProblems(f)
+    if (problems.length) {
+      setError(problems.join(' '))
+      return
+    }
     setBusy(true)
     setError(null)
-    const body = { ...matchFields(f), enabled: f.enabled, name: f.name, destinationIds: f.destinationIds }
+    const body = routeBody(f)
     try {
       if (editing) await put(`/api/routes/${editing.id}`, body)
       else await post('/api/routes', body)
@@ -197,6 +281,50 @@ function RouteEditor({
           <Check checked={f.enabled} onChange={(v) => set('enabled', v)}>
             Enabled
           </Check>
+        </div>
+        <Field label="Only from actors" hint="Actor IDs (Slack or Discord user ID, SMS number), separated by commas or spaces. Exact match. Empty means anyone. Webhook events have no actor, so a list never matches them.">
+          {(p) => <input {...p} className="input font-mono" placeholder="Anyone" value={f.actorIn} onChange={(e) => set('actorIn', e.target.value)} />}
+        </Field>
+        <div className="flex min-w-0 flex-col gap-2 border-t border-rule pt-3">
+          <span className="label">Selection</span>
+          <Segmented
+            label="Selection"
+            value={f.selection}
+            onChange={(v) => set('selection', v)}
+            options={[
+              ['always', 'Always', 'Deliver every match'],
+              ['classifier', 'Classifier', 'Deliver a match only if the classifier picks it'],
+            ]}
+            className="self-start"
+          />
+          {f.selection === 'classifier' ? (
+            <>
+              <Field label="Intent" hint={`What events this route is for, in plain words. The classifier sees only this. ${f.intent.trim().length}/${MAX_INTENT}`}>
+                {(p) => (
+                  <textarea
+                    {...p}
+                    className="input min-h-16"
+                    required
+                    maxLength={MAX_INTENT}
+                    placeholder="Questions about invoices or billing"
+                    value={f.intent}
+                    onChange={(e) => set('intent', e.target.value)}
+                  />
+                )}
+              </Field>
+              <Field label="When the classifier has no answer" hint="Timeout, error, refusal, bad output, or over the daily limit.">
+                {(p) => (
+                  <select {...p} className="input w-auto self-start" value={f.classifierFallback} onChange={(e) => set('classifierFallback', e.target.value as RouteForm['classifierFallback'])}>
+                    <option value="drop">Drop: do not deliver</option>
+                    <option value="deliver">Deliver anyway</option>
+                  </select>
+                )}
+              </Field>
+            </>
+          ) : null}
+          <p className="text-xs text-ink-3">
+            A classifier route only narrows: it sees events that already matched the filters above, and can only drop them. Event text can steer it, so never make it the only guard in front of a risky destination. Use the deterministic filters (type, text, actors) for that.
+          </p>
         </div>
         <fieldset className="flex min-w-0 flex-col">
           <legend className="label mb-0.5">Destinations</legend>
@@ -275,6 +403,7 @@ export function Routes() {
 
   return (
     <Page title="Routes" meta="Each route patches a line to destinations. Only enabled routes carry calls." actions={newButton}>
+      <ClassifierBar />
       <FormError error={toggleError} />
       <Async state={state} skeleton={<SkeletonRows rows={4} height="h-14" />}>
         {(d) => (
@@ -317,6 +446,18 @@ export function Routes() {
                           </Rule>
                         ) : null}
                         {r.includeSubtypes ? <Rule term="subtypes">included</Rule> : null}
+                        {r.actorIn?.length ? (
+                          <Rule term="actors">
+                            <code>{r.actorIn.join(', ')}</code>
+                          </Rule>
+                        ) : null}
+                        {r.selection === 'classifier' ? (
+                          <Rule term="classifier">
+                            <span title={r.intent ?? ''}>
+                              {r.intent} · fallback {r.classifierFallback}
+                            </span>
+                          </Rule>
+                        ) : null}
                       </dl>
                     </div>
                     <div className="min-w-0 max-w-[38rem] max-lg:col-span-2">
