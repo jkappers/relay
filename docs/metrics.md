@@ -18,6 +18,7 @@ Served at `GET /metrics` on the server (`PORT`), on the worker (`WORKER_METRICS_
 | `relay_provider_app_changes_total` | counter | `provider` | Slack or Discord app settings saved (`PUT`) or removed (`DELETE`) through `/api/admin/integrations`. |
 | `relay_provider_app_config_errors_total` | counter | `provider`, `reason` | Saved app settings that could not be used. See below. |
 | `relay_provider_app_tests_total` | counter | `provider`, `result` | One per admin click on Test. See below. |
+| `relay_slack_signature_previous_total` | counter | none | A Slack request was accepted with the previous signing secret, during the 24 hours after a change. Should fall to 0 once Slack signs with the new one. |
 
 Worker metrics:
 
@@ -38,6 +39,7 @@ Worker metrics:
 | `relay_classifier_calls_total` | counter | `outcome` | One per `route` job whose event matched at least one gated route (`selection = classifier`, connection mode `shadow` or `enforce`). See below. |
 | `relay_classifier_decisions_total` | counter | `mode`, `result` | One per event: counted by the job whose decision was stored. Reuse adds 0. See below. |
 | `relay_classifier_tokens_total` | counter | `kind` | Tokens used by classifier calls: `input`, `output`. Counted for every call, including one whose decision lost a race. |
+| `relay_provider_app_config_errors_total` | counter | `provider`, `reason` | As on the server. The worker reads the Discord bot token through the store (30 s cache). |
 
 Gateway metrics (`apps/gateway`):
 
@@ -45,7 +47,10 @@ Gateway metrics (`apps/gateway`):
 |---|---|---|---|
 | `relay_discord_gateway_connected` | gauge | none | 1 while the Discord Gateway session is ready or resumed. 0 after a close, before the library reconnects. |
 | `relay_discord_gateway_leader` | gauge | none | 1 while this process holds the leader lock. A second copy shows 0 and waits. |
-| `relay_discord_gateway_closes_total` | counter | `code` | Gateway socket closes by close code. 4004 (bad token) and 4014 (disallowed intents) do not reconnect: fix the config and restart. |
+| `relay_discord_gateway_closes_total` | counter | `code` | Gateway socket closes by close code. 4004 (bad token) and 4010 to 4014 (4014: disallowed intents) do not reconnect. Saving a new bot token starts a new session without a restart; other causes need a restart. |
+| `relay_gateway_configured` | gauge | none | 1 while the leader has a Discord bot token (saved in Relay or `DISCORD_BOT_TOKEN`). 0 while it waits for one. |
+| `relay_gateway_token_swaps_total` | counter | none | The bot token changed and the leader replaced its session (one new IDENTIFY). At most one per `GATEWAY_MIN_SWAP_SECONDS` (default 60). The first connect after waiting does not count. |
+| `relay_provider_app_config_errors_total` | counter | `provider`, `reason` | As on the server. The leader reads the bot token every `GATEWAY_TOKEN_POLL_SECONDS` (default 30). |
 | `relay_discord_dispatch_total` | counter | `type` | Gateway dispatches received, by event name (`MESSAGE_CREATE`, `GUILD_CREATE`, `READY`, ...). |
 | `relay_discord_messages_total` | counter | `outcome` | One per `MESSAGE_CREATE`, or one per connection when it is stored. See below. |
 | `relay_discord_dm_unrouted_total` | counter | none | A DM to the bot from someone who installed no active connection. Dropped. |
@@ -256,13 +261,14 @@ Changes made through the console API that succeeded. Labels `resource` and `acti
 
 ## `relay_provider_app_config_errors_total` reasons
 
-Counted by the provider app store each time it loads a provider's settings from the database (at most once per cache TTL per process).
+Emitted by the server, the worker, and the gateway. `decrypt`, `validate`, and `db` are counted by the provider app store each time it loads a provider's settings from the database (at most once per cache TTL per process). `unavailable` is counted per request.
 
 | Reason | Meaning |
 |---|---|
 | `decrypt` | A saved secret does not decrypt (wrong `RELAY_MASTER_KEY`, or a corrupt row). The provider is `invalid`. Env is not used. |
 | `validate` | The row decrypts but a value fails validation. The provider is `invalid`. Env is not used. |
 | `db` | The read failed. The last good value is kept if there is one. |
+| `unavailable` | Server only: a request to `/hooks/slack`, `/oauth/slack/*`, or `/oauth/discord/*` was answered 503 because the provider is `invalid`. |
 
 ## `relay_provider_app_tests_total` results
 

@@ -87,11 +87,13 @@ Tests use the `relay_test` database. Compose creates it on first start, so tests
 | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` | server | Same page |
 | `SLACK_ALLOWED_USER_IDS` | server | Optional. Comma-separated Slack user IDs that may connect. If set, others get a 403 and nothing is stored. |
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` | server | From the Discord app's OAuth2 page. Optional: Discord install is on only when both are set. |
-| `DISCORD_BOT_TOKEN` | server, worker, gateway | From the Discord app's Bot page. One token for every Discord connection. Required by the gateway. Without it, Discord actions fail with `no_credentials`. |
+| `DISCORD_BOT_TOKEN` | server, worker, gateway | From the Discord app's Bot page. One token for every Discord connection. Without any bot token (here or saved in Settings), the gateway waits for one and Discord actions fail with `no_credentials`. |
 | `DISCORD_API_BASE_URL` | server, worker | Discord REST base. Default `https://discord.com/api/v10`. Change only to stub Discord in tests. |
 | `DISCORD_ALLOWED_USER_IDS` | server | Optional. Comma-separated Discord user IDs that may install the bot. If set, others get a 403 and nothing is stored. |
 | `GATEWAY_METRICS_PORT` | gateway | Default 9466. Serves `/metrics` and `/healthz`. |
 | `GATEWAY_LOCK_POLL_SECONDS` | gateway | How often a waiting copy retries the leader lock, and how often the leader checks it. Default 15. |
+| `GATEWAY_TOKEN_POLL_SECONDS` | gateway | How often the leader reads the bot token from Settings (or env). Default 30. |
+| `GATEWAY_MIN_SWAP_SECONDS` | gateway | At most one new Gateway session per this many seconds after a token change or a failed connect. Default 60. |
 | `WORKER_METRICS_PORT` | worker | Default 9465. Serves `/metrics` and `/healthz`. |
 | `DISPATCH_BACKOFF_BASE_MS`, `DISPATCH_BACKOFF_CAP_MS` | worker | Retry backoff. Defaults 5000 and 900000. |
 | `SWEEP_INTERVAL_SECONDS`, `SWEEP_GRACE_SECONDS` | worker | How often the sweeper runs (60) and how old stuck work must be before it is requeued (300). |
@@ -103,7 +105,9 @@ Tests use the `relay_test` database. Compose creates it on first start, so tests
 | `RELAY_CLASSIFIER` | worker | `anthropic` (default) or `fake`. `fake` picks routes whose intent shares a word with the text, with no API call, for tests and demos. Refused when `NODE_ENV=production`. |
 | `TEST_DATABASE_URL` | tests | Optional. Defaults to `relay_test` in compose. |
 
-The `SLACK_*` and `DISCORD_*` app settings (signing secret, client id and secret, bot token, allowed user ids) are deprecated in favor of Settings: an instance admin saves them through `/api/admin/integrations`, encrypted in the database. Env stays a fallback: it applies only while no settings are saved for that provider. Once saved, the database wins. If saved settings can't be decrypted or fail validation (for example after changing `RELAY_MASTER_KEY`), the provider is marked invalid and env is not used. See [ADR 0011](docs/adr/0011-instance-admins-and-provider-apps.md). The server, worker, and gateway read saved settings starting in M12b; until then they still use env.
+The `SLACK_*` and `DISCORD_*` app settings (signing secret, client id and secret, bot token, allowed user ids) are deprecated in favor of Settings: an instance admin saves them through `/api/admin/integrations`, encrypted in the database. Env stays a fallback: it applies only while no settings are saved for that provider. Once saved, the database wins. If saved settings can't be decrypted or fail validation (for example after changing `RELAY_MASTER_KEY`), the provider is marked invalid and env is not used. See [ADR 0011](docs/adr/0011-instance-admins-and-provider-apps.md).
+
+Changes apply without a restart. The server reads the settings per request (5 s cache): `/hooks/slack`, `/oauth/slack/*`, and `/oauth/discord/*` are always mounted and answer 404 while a provider is not set up and 503 while its saved settings are invalid. The worker reads the Discord bot token per action (30 s cache). The gateway checks the bot token every `GATEWAY_TOKEN_POLL_SECONDS`: with none it waits instead of exiting, and when the token changes it closes its session and opens one with the new token (at most one per `GATEWAY_MIN_SWAP_SECONDS`). A new Slack signing secret takes effect at once, and the previous one is still accepted for 24 hours. An install set up only through env vars works as before.
 
 Make a master key:
 
@@ -440,7 +444,7 @@ Actions work as in the table above, with these changes:
 4. Run `pnpm dev:gateway` next to the server and worker. Only one copy connects. A second one waits.
 5. Sign in to the console and press Add Discord server. Pick a server and approve. Relay checks the server named in Discord's token response and sends you to the new connection's Routes page.
 
-Restart the gateway with a delay of a minute or more. Each fresh start counts against Discord's limit of 1000 logins a day.
+Restart the gateway with a delay of a minute or more. Each fresh start counts against Discord's limit of 1000 logins a day. A bot token change does not need a restart: the gateway picks it up within `GATEWAY_TOKEN_POLL_SECONDS` and starts one new session. If Discord rejects the token (close code 4004), the gateway stops and waits for a different token.
 
 ## Generic webhook
 
