@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { guard, isNewPath, newPath, oauthStartPath, parseNewPath, providerCards, type NewRoute } from '../src/connect-wizard'
+import { discordInvitePath, discordLinkPath, guard, isNewPath, newPath, oauthStartPath, parseNewPath, providerCards, type NewRoute } from '../src/connect-wizard'
 
 const ready = { slack: '/oauth/slack/start', discord: '/oauth/discord/start' }
 const none = { slack: null, discord: null }
@@ -13,6 +13,7 @@ const ROUTES: NewRoute[] = [
   { kind: 'connect', provider: 'discord' },
   { kind: 'setup', provider: 'slack' },
   { kind: 'setup', provider: 'discord' },
+  { kind: 'servers', provider: 'discord', grant: 'eyJ1IjoiYSJ9.abc_-123' },
   { kind: 'form', provider: 'sms' },
   { kind: 'form', provider: 'webhook' },
 ]
@@ -22,7 +23,7 @@ describe('paths', () => {
     expect(parseNewPath(newPath(route))).toEqual(route)
   })
 
-  it.each(['/new/', '/new/other', '/new/sms/setup', '/new/webhook/setup', '/new/slack/setup/x', '/newer', '/settings', '/'])(
+  it.each(['/new/', '/new/other', '/new/sms/setup', '/new/webhook/setup', '/new/slack/setup/x', '/new/discord/servers', '/new/discord/servers/', '/new/slack/servers/abc', '/new/discord/servers/a/b', '/new/discord/servers/a b', '/newer', '/settings', '/'])(
     'rejects %s',
     (path) => {
       expect(parseNewPath(path)).toBeNull()
@@ -69,7 +70,15 @@ describe('guard', () => {
   })
 
   it('never moves the picker or the forms', () => {
-    for (const r of [ROUTES[0]!, ROUTES[5]!, ROUTES[6]!]) expect(guard(r, none, member)).toEqual(r)
+    for (const r of ROUTES.filter((r) => r.kind === 'pick' || r.kind === 'form')) expect(guard(r, none, member)).toEqual(r)
+  })
+
+  it('treats the server picker like connect', () => {
+    const servers: NewRoute = { kind: 'servers', provider: 'discord', grant: 'g.m' }
+    expect(guard(servers, ready, member)).toEqual(servers)
+    expect(guard(servers, null, member)).toEqual(servers)
+    expect(guard(servers, none, admin)).toEqual({ kind: 'setup', provider: 'discord' })
+    expect(guard(servers, none, member)).toEqual({ kind: 'connect', provider: 'discord' })
   })
 })
 
@@ -92,4 +101,9 @@ describe('providerCards', () => {
 
 it('oauthStartPath', () => {
   expect(oauthStartPath('slack')).toBe('/oauth/slack/start')
+})
+
+it('discord easy-connect paths', () => {
+  expect(discordLinkPath()).toBe('/oauth/discord/start?step=identify')
+  expect(discordInvitePath('2909267986347357250')).toBe('/oauth/discord/start?guild_id=2909267986347357250')
 })
