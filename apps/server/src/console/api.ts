@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { zValidator } from '@hono/zod-validator'
 import { getConnInfo } from '@hono/node-server/conninfo'
 import { and, count, desc, eq, inArray, sql, type SQL } from 'drizzle-orm'
@@ -14,6 +15,7 @@ import {
   createRouteInput,
   deleteDestination,
   deleteRoute,
+  isMember,
   log,
   matchRoute,
   replayDelivery,
@@ -32,14 +34,16 @@ import {
   type ProviderRuntime,
   type Queue,
 } from '@relay/core'
+import { HasherBusyError, PASSWORD_MAX, type PasswordHasher } from '../accounts/password'
+import { createUser, credentialsInput, EmailTakenError, findUserByEmail } from '../accounts/users'
 import type { ServerMetrics } from '../metrics'
 import {
-  checkSessionToken,
   createLoginLimiter,
-  createSessionToken,
-  passwordMatches,
+  EMAIL_MAX_FAILURES,
+  IP_MAX_FAILURES,
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
+  type SessionStore,
 } from './session'
 
 export interface ConsoleApiDeps {
@@ -49,22 +53,25 @@ export interface ConsoleApiDeps {
   connections: ConnectionStore
   runtimes: Record<string, ProviderRuntime>
   metrics: ServerMetrics
-  password: string
-  sessionKey: Buffer
+  sessions: SessionStore
+  hasher: PasswordHasher
+  signupMode: 'open' | 'closed'
   publicUrl: string
   nowSeconds: () => number
 }
 
+type Env = { Variables: { userId: string; connectionId: string } }
+
 type DestinationRow = typeof schema.destinations.$inferSelect
 type RouteRow = typeof schema.routes.$inferSelect
 
-const { connections, destinations, routes, routeDestinations, deliveries, events, actionsLog, agentRuns } = schema
+const { connections, destinations, routes, routeDestinations, deliveries, events, actionsLog, agentRuns, users } = schema
 
 const uuid = z.uuid()
 const MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
-export function sessionGuard(deps: Pick<ConsoleApiDeps, 'sessionKey' | 'nowSeconds'>) {
-  return (c: Context) => checkSessionToken(deps.sessionKey, getCookie(c, SESSION_COOKIE), deps.nowSeconds())
+export function sessionUser(sessions: SessionStore) {
+  return async (c: Context): Promise<string | null> => (await sessions.lookup(getCookie(c, SESSION_COOKIE)))?.userId ?? null
 }
 
 const fail = (path: PropertyKey[], message: string) => ({ path: path.join('.'), message })
@@ -141,7 +148,6 @@ type Facet = (typeof FACETS)[number]
 
 const facetsQuery = z.object({
   provider: z.string().min(1).optional(),
-  connectionId: z.uuid().optional(),
   type: z.string().min(1).optional(),
   since: z.iso.datetime({ offset: true }).optional(),
 })
@@ -166,10 +172,16 @@ const createDestinationBody = z.discriminatedUnion('kind', [
 const routeBody = createRouteInput
 const previewBody = createRouteInput.omit({ name: true, destinationIds: true })
 
+const loginBody = z.object({ email: z.string().trim().toLowerCase().min(1).max(254), password: z.string().max(PASSWORD_MAX) })
+const webhookBody = z.object({ name: z.string().trim().min(1).max(100).optional() })
+
 export function consoleApi(deps: ConsoleApiDeps) {
   const { db, queue, metrics } = deps
-  const limiter = createLoginLimiter()
-  const hasSession = sessionGuard(deps)
+  const ipLimiter = createLoginLimiter(IP_MAX_FAILURES)
+  const emailLimiter = createLoginLimiter(EMAIL_MAX_FAILURES)
+  const signupLimiter = createLoginLimiter(IP_MAX_FAILURES)
+  const dummyHash = deps.hasher.hash(randomBytes(32).toString('base64url'))
+  dummyHash.catch(() => {})
   const secure = deps.publicUrl.startsWith('https://')
   const mutated = (resource: string, action: string) => metrics.consoleMutations.inc({ resource, action })
 
@@ -180,17 +192,25 @@ export function consoleApi(deps: ConsoleApiDeps) {
     await next()
   }
 
-  const auth: MiddlewareHandler = async (c, next) => {
-    if (c.req.method === 'POST' && c.req.path === '/api/session') return next()
-    if (!hasSession(c)) return c.json({ error: 'unauthorized' }, 401)
+  const auth: MiddlewareHandler<Env> = async (c, next) => {
+    if (c.req.method === 'POST' && (c.req.path === '/api/session' || c.req.path === '/api/users')) return next()
+    const session = await deps.sessions.lookup(getCookie(c, SESSION_COOKIE))
+    if (!session) return c.json({ error: 'unauthorized', signup: deps.signupMode }, 401)
+    c.set('userId', session.userId)
     await next()
   }
 
-  const api = new Hono()
-  api.use('*', csrf)
-  api.use('*', auth)
+  const startSession = async (c: Context, userId: string) => {
+    setCookie(c, SESSION_COOKIE, await deps.sessions.create(userId), {
+      path: '/',
+      httpOnly: true,
+      secure,
+      sameSite: 'Strict',
+      maxAge: SESSION_TTL_SECONDS,
+    })
+  }
 
-  api.onError((err, c) => {
+  const onError = (err: Error, c: Context) => {
     if (err instanceof z.ZodError) {
       return c.json({ error: 'validation', issues: err.issues.map((i) => fail(i.path, i.message)) }, 400)
     }
@@ -200,7 +220,12 @@ export function consoleApi(deps: ConsoleApiDeps) {
     }
     log.error('console api error', { err: err instanceof Error ? err.message : String(err), path: c.req.path })
     return c.json({ error: 'internal' }, 500)
-  })
+  }
+
+  const api = new Hono<Env>()
+  api.use('*', csrf)
+  api.use('*', auth)
+  api.onError(onError)
 
   const notFound = (message: string) => new AdminError(message, 'not_found')
   const idParam = (c: Context, name = 'id') => {
@@ -208,56 +233,165 @@ export function consoleApi(deps: ConsoleApiDeps) {
     if (!parsed.success) throw notFound('not found')
     return parsed.data
   }
+  const busy = (c: Context) => c.json({ error: 'busy', message: 'too many sign-ins at once; try again' }, 503, { 'retry-after': '5' })
 
-  api.post('/session', validated('json', z.object({ password: z.string().max(1000) })), (c) => {
+  api.post('/session', validated('json', loginBody), async (c) => {
     const ip = clientIp(c)
     const now = deps.nowSeconds()
-    if (limiter.blocked(ip, now)) {
+    const { email, password } = c.req.valid('json') as z.output<typeof loginBody>
+    if (ipLimiter.blocked(ip, now)) {
       metrics.consoleLogins.inc({ outcome: 'throttled' })
       return c.json({ error: 'throttled', message: 'too many failed logins; try again later' }, 429, { 'retry-after': '900' })
     }
-    const { password } = c.req.valid('json') as { password: string }
-    if (!passwordMatches(deps.sessionKey, deps.password, password)) {
-      limiter.fail(ip, now)
-      metrics.consoleLogins.inc({ outcome: 'bad_password' })
-      return c.json({ error: 'bad_password' }, 401)
+    if (emailLimiter.blocked(email, now)) {
+      metrics.consoleLogins.inc({ outcome: 'rate_limited' })
+      return c.json({ error: 'throttled', message: 'too many failed logins; try again later' }, 429, { 'retry-after': '900' })
     }
-    limiter.clear(ip)
+    const user = await findUserByEmail(db, email)
+    let ok: boolean
+    try {
+      // Unknown emails check against a dummy hash so both paths cost one scrypt.
+      ok = await deps.hasher.verify(user?.passwordHash ?? (await dummyHash), password)
+    } catch (err) {
+      if (!(err instanceof HasherBusyError)) throw err
+      metrics.consoleLogins.inc({ outcome: 'busy' })
+      return busy(c)
+    }
+    if (!user || !ok) {
+      ipLimiter.fail(ip, now)
+      emailLimiter.fail(email, now)
+      metrics.consoleLogins.inc({ outcome: 'bad_credentials' })
+      return c.json({ error: 'bad_credentials' }, 401)
+    }
+    ipLimiter.clear(ip)
+    emailLimiter.clear(email)
     metrics.consoleLogins.inc({ outcome: 'success' })
-    setCookie(c, SESSION_COOKIE, createSessionToken(deps.sessionKey, now), {
-      path: '/',
-      httpOnly: true,
-      secure,
-      sameSite: 'Strict',
-      maxAge: SESSION_TTL_SECONDS,
-    })
+    await startSession(c, user.id)
     return c.body(null, 204)
   })
 
-  api.delete('/session', (c) => {
+  api.post('/users', validated('json', credentialsInput), async (c) => {
+    if (deps.signupMode !== 'open') {
+      metrics.consoleSignups.inc({ outcome: 'closed' })
+      return c.json({ error: 'signup_closed', message: 'sign-up is closed; ask the operator for an account' }, 403)
+    }
+    const ip = clientIp(c)
+    const now = deps.nowSeconds()
+    if (signupLimiter.blocked(ip, now)) {
+      metrics.consoleSignups.inc({ outcome: 'rate_limited' })
+      return c.json({ error: 'throttled', message: 'too many sign-ups; try again later' }, 429, { 'retry-after': '900' })
+    }
+    signupLimiter.fail(ip, now)
+    let user: schema.UserRow
+    try {
+      user = await createUser(db, deps.hasher, c.req.valid('json') as z.output<typeof credentialsInput>)
+    } catch (err) {
+      if (err instanceof EmailTakenError) {
+        metrics.consoleSignups.inc({ outcome: 'email_taken' })
+        return c.json({ error: 'email_taken', message: err.message }, 409)
+      }
+      if (!(err instanceof HasherBusyError)) throw err
+      metrics.consoleSignups.inc({ outcome: 'busy' })
+      return busy(c)
+    }
+    metrics.consoleSignups.inc({ outcome: 'created' })
+    await startSession(c, user.id)
+    return c.json({ id: user.id, email: user.email }, 201)
+  })
+
+  api.delete('/session', async (c) => {
+    await deps.sessions.revoke(getCookie(c, SESSION_COOKIE))
     deleteCookie(c, SESSION_COOKIE, { path: '/', secure })
     return c.body(null, 204)
   })
 
-  api.get('/session', (c) => c.json({ ok: true }))
+  const serializeConnection = (r: Awaited<ReturnType<ConnectionStore['listForUser']>>[number]) => ({
+    id: r.id,
+    name: r.name,
+    provider: r.provider,
+    teamId: r.teamId,
+    userId: r.userId,
+    status: r.status,
+    role: r.role,
+    createdAt: r.createdAt,
+  })
 
-  api.get('/overview', async (c) => {
+  api.get('/session', async (c) => {
+    const [user] = await db.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, c.var.userId))
+    const mine = await deps.connections.listForUser(c.var.userId)
+    return c.json({ user, connections: mine.map(serializeConnection), signup: deps.signupMode })
+  })
+
+  api.get('/connections', async (c) => {
+    const mine = await deps.connections.listForUser(c.var.userId)
+    return c.json({ items: mine.map(serializeConnection) })
+  })
+
+  api.get('/connections/slack-url', (c) => c.json({ url: `${deps.publicUrl}/oauth/slack/start` }))
+
+  api.post('/connections/webhook', validated('json', webhookBody), async (c) => {
+    const { name } = c.req.valid('json') as z.output<typeof webhookBody>
+    const { connection, secret } = await deps.connections.createWebhook({ ...(name ? { name } : {}), ownerUserId: c.var.userId })
+    mutated('connection', 'create')
+    return c.json(
+      {
+        id: connection.id,
+        name: connection.name,
+        provider: connection.provider,
+        status: connection.status,
+        createdAt: connection.createdAt,
+        url: `${deps.publicUrl}/hooks/webhook/${connection.id}`,
+        secret,
+      },
+      201,
+    )
+  })
+
+  // Jtis are unguessable and revoking one only stops a token, so this stays account-level.
+  api.post('/tokens/revoke', validated('json', z.object({ jti: z.string().min(1).max(200) })), async (c) => {
+    await revokeReplyToken(db, (c.req.valid('json') as { jti: string }).jti)
+    mutated('token', 'revoke')
+    return c.body(null, 204)
+  })
+
+  const t = new Hono<Env>()
+  t.onError(onError)
+  t.use('*', async (c, next) => {
+    const id = uuid.safeParse(c.req.param('connectionId'))
+    if (!id.success || !(await isMember(db, c.var.userId, id.data))) {
+      metrics.tenantDenied.inc({})
+      return c.json({ error: 'not_found' }, 404)
+    }
+    c.set('connectionId', id.data)
+    await next()
+  })
+
+  t.get('/overview', async (c) => {
+    const tenant = c.var.connectionId
     const since = sql`now() - interval '24 hours'`
     const [[ev], deliveryRows, [act], [runs]] = await Promise.all([
-      db.select({ n: count() }).from(events).where(sql`${events.receivedAt} >= ${since}`),
+      db
+        .select({ n: count() })
+        .from(events)
+        .where(and(eq(events.connectionId, tenant), sql`${events.receivedAt} >= ${since}`)),
       db
         .select({ status: deliveries.status, n: count() })
         .from(deliveries)
-        .where(sql`${deliveries.createdAt} >= ${since}`)
+        .innerJoin(events, eq(events.id, deliveries.eventId))
+        .where(and(eq(events.connectionId, tenant), sql`${deliveries.createdAt} >= ${since}`))
         .groupBy(deliveries.status),
       db
         .select({ n: count() })
         .from(actionsLog)
-        .where(and(eq(actionsLog.status, 'failed'), sql`${actionsLog.updatedAt} >= ${since}`)),
+        .innerJoin(deliveries, eq(deliveries.id, actionsLog.deliveryId))
+        .innerJoin(events, eq(events.id, deliveries.eventId))
+        .where(and(eq(events.connectionId, tenant), eq(actionsLog.status, 'failed'), sql`${actionsLog.updatedAt} >= ${since}`)),
       db
         .select({ n: count(), cost: sql<string>`coalesce(sum(${agentRuns.costUsd}), 0)::text` })
         .from(agentRuns)
-        .where(sql`${agentRuns.startedAt} >= ${since}`),
+        .innerJoin(deliveries, eq(deliveries.id, agentRuns.deliveryId))
+        .innerJoin(events, eq(events.id, deliveries.eventId))
+        .where(and(eq(events.connectionId, tenant), sql`${agentRuns.startedAt} >= ${since}`)),
     ])
     const byStatus = { pending: 0, succeeded: 0, failed: 0 }
     for (const r of deliveryRows) byStatus[r.status] = r.n
@@ -271,101 +405,79 @@ export function consoleApi(deps: ConsoleApiDeps) {
     })
   })
 
-  api.get('/connections', async (c) => {
-    const rows = await db.select().from(connections).orderBy(desc(connections.createdAt))
-    return c.json({
-      items: rows.map((r) => ({
-        id: r.id,
-        provider: r.provider,
-        teamId: r.teamId,
-        userId: r.userId,
-        status: r.status,
-        createdAt: r.createdAt,
-      })),
-    })
-  })
-
-  api.get('/connections/slack-url', (c) => c.json({ url: `${deps.publicUrl}/oauth/slack/start` }))
-
-  api.post('/connections/webhook', async (c) => {
-    const { connection, secret } = await deps.connections.createWebhook()
-    mutated('connection', 'create')
-    return c.json(
-      {
-        id: connection.id,
-        provider: connection.provider,
-        status: connection.status,
-        createdAt: connection.createdAt,
-        url: `${deps.publicUrl}/hooks/webhook/${connection.id}`,
-        secret,
-      },
-      201,
-    )
-  })
-
-  api.post('/connections/:id/revoke', async (c) => {
-    await revokeConnection(db, idParam(c))
+  t.post('/revoke', async (c) => {
+    await revokeConnection(db, c.var.connectionId)
     mutated('connection', 'revoke')
     return c.body(null, 204)
   })
 
-  api.get('/destinations', async (c) => {
+  const linkedRouteCount = sql<number>`(select count(*)::int from route_destinations rd join routes r on r.id = rd.route_id
+    where rd.destination_id = destinations.id and r.connection_id = destinations.connection_id)`
+
+  t.get('/destinations', async (c) => {
     const rows = await db
-      .select({
-        d: destinations,
-        routeCount: sql<number>`(select count(*)::int from route_destinations rd where rd.destination_id = destinations.id)`,
-      })
+      .select({ d: destinations, routeCount: linkedRouteCount })
       .from(destinations)
+      .where(eq(destinations.connectionId, c.var.connectionId))
       .orderBy(desc(destinations.createdAt))
     return c.json({ items: rows.map((r) => serializeDestination(r.d, r.routeCount)) })
   })
 
-  api.get('/destinations/:id', async (c) => {
-    const id = idParam(c)
-    const [row] = await db.select().from(destinations).where(eq(destinations.id, id))
+  t.get('/destinations/:id', async (c) => {
+    const [row] = await db
+      .select({ d: destinations, routeCount: linkedRouteCount })
+      .from(destinations)
+      .where(and(eq(destinations.id, idParam(c)), eq(destinations.connectionId, c.var.connectionId)))
     if (!row) throw notFound('destination not found')
-    const [n] = await db.select({ n: count() }).from(routeDestinations).where(eq(routeDestinations.destinationId, id))
-    return c.json(serializeDestination(row, n?.n ?? 0))
+    return c.json(serializeDestination(row.d, row.routeCount))
   })
 
-  api.post('/destinations', validated('json', createDestinationBody), async (c) => {
+  t.post('/destinations', validated('json', createDestinationBody), async (c) => {
     const body = c.req.valid('json') as z.output<typeof createDestinationBody>
     if (body.kind === 'http') {
-      const { destination, secret } = await createDestination(db, deps.cipher, body)
+      const { destination, secret } = await createDestination(db, deps.cipher, c.var.connectionId, body)
       mutated('destination', 'create')
       return c.json({ ...serializeDestination(destination), secret }, 201)
     }
-    const destination = await createAgentDestination(db, body)
+    const destination = await createAgentDestination(db, c.var.connectionId, body)
     mutated('destination', 'create')
     return c.json(serializeDestination(destination), 201)
   })
 
-  api.patch('/destinations/:id', async (c) => {
+  t.patch('/destinations/:id', async (c) => {
     const body = await c.req.json().catch(() => null)
     if (typeof body !== 'object' || body === null || Array.isArray(body)) {
       return c.json({ error: 'validation', issues: [fail([], 'body must be a JSON object')] }, 400)
     }
-    const row = await updateDestination(db, idParam(c), body)
+    const row = await updateDestination(db, c.var.connectionId, idParam(c), body)
     mutated('destination', 'update')
     return c.json(serializeDestination(row))
   })
 
-  api.delete('/destinations/:id', async (c) => {
-    await deleteDestination(db, idParam(c))
+  t.delete('/destinations/:id', async (c) => {
+    await deleteDestination(db, c.var.connectionId, idParam(c))
     mutated('destination', 'delete')
     return c.body(null, 204)
   })
 
-  api.post('/destinations/:id/rotate-secret', async (c) => {
-    const secret = await rotateDestinationSecret(db, deps.cipher, idParam(c))
+  t.post('/destinations/:id/rotate-secret', async (c) => {
+    const secret = await rotateDestinationSecret(db, deps.cipher, c.var.connectionId, idParam(c))
     mutated('destination', 'rotate_secret')
     return c.json({ secret })
   })
 
-  const routesWithDestinations = async (where?: SQL) => {
-    const rows = await (where ? db.select().from(routes).where(where) : db.select().from(routes)).orderBy(desc(routes.createdAt))
+  const routesWithDestinations = async (tenant: string, where?: SQL) => {
+    const rows = await db
+      .select()
+      .from(routes)
+      .where(and(eq(routes.connectionId, tenant), where))
+      .orderBy(desc(routes.createdAt))
     const links = rows.length
-      ? await db.select().from(routeDestinations).where(inArray(routeDestinations.routeId, rows.map((r) => r.id)))
+      ? await db
+          .select({ routeId: routeDestinations.routeId, destinationId: routeDestinations.destinationId })
+          .from(routeDestinations)
+          .innerJoin(destinations, eq(destinations.id, routeDestinations.destinationId))
+          .where(and(inArray(routeDestinations.routeId, rows.map((r) => r.id)), eq(destinations.connectionId, tenant)))
       : []
     return rows.map((r) =>
       serializeRoute(
@@ -375,13 +487,15 @@ export function consoleApi(deps: ConsoleApiDeps) {
     )
   }
 
-  api.get('/routes', async (c) => c.json({ items: await routesWithDestinations() }))
+  t.get('/routes', async (c) => c.json({ items: await routesWithDestinations(c.var.connectionId) }))
 
-  api.post('/routes/preview', validated('json', previewBody), async (c) => {
-    const def = c.req.valid('json') as z.output<typeof previewBody>
+  t.post('/routes/preview', validated('json', previewBody), async (c) => {
+    const tenant = c.var.connectionId
+    const def = { ...(c.req.valid('json') as z.output<typeof previewBody>), connectionId: tenant }
     const rows = await db
       .select({ id: events.id, receivedAt: events.receivedAt, envelope: events.envelope })
       .from(events)
+      .where(eq(events.connectionId, tenant))
       .orderBy(desc(events.receivedAt), desc(events.id))
       .limit(50)
     const matches = rows
@@ -393,39 +507,42 @@ export function consoleApi(deps: ConsoleApiDeps) {
     return c.json({ scanned: rows.length, matches })
   })
 
-  api.get('/routes/:id', async (c) => {
-    const [row] = await routesWithDestinations(eq(routes.id, idParam(c)))
+  t.get('/routes/:id', async (c) => {
+    const [row] = await routesWithDestinations(c.var.connectionId, eq(routes.id, idParam(c)))
     if (!row) throw notFound('route not found')
     return c.json(row)
   })
 
-  api.post('/routes', validated('json', routeBody), async (c) => {
-    const route = await createRoute(db, c.req.valid('json') as z.input<typeof routeBody>)
+  t.post('/routes', validated('json', routeBody), async (c) => {
+    const tenant = c.var.connectionId
+    const route = await createRoute(db, tenant, c.req.valid('json') as z.input<typeof routeBody>)
     mutated('route', 'create')
-    const [row] = await routesWithDestinations(eq(routes.id, route.id))
+    const [row] = await routesWithDestinations(tenant, eq(routes.id, route.id))
     return c.json(row, 201)
   })
 
-  api.put('/routes/:id', validated('json', routeBody), async (c) => {
+  t.put('/routes/:id', validated('json', routeBody), async (c) => {
+    const tenant = c.var.connectionId
     const id = idParam(c)
-    await updateRoute(db, id, c.req.valid('json') as z.input<typeof routeBody>)
+    await updateRoute(db, tenant, id, c.req.valid('json') as z.input<typeof routeBody>)
     mutated('route', 'update')
-    const [row] = await routesWithDestinations(eq(routes.id, id))
+    const [row] = await routesWithDestinations(tenant, eq(routes.id, id))
     return c.json(row)
   })
 
-  api.delete('/routes/:id', async (c) => {
-    await deleteRoute(db, idParam(c))
+  t.delete('/routes/:id', async (c) => {
+    await deleteRoute(db, c.var.connectionId, idParam(c))
     mutated('route', 'delete')
     return c.body(null, 204)
   })
 
   for (const [action, enabled] of [['enable', true], ['disable', false]] as const) {
-    api.post(`/routes/:id/${action}`, async (c) => {
+    t.post(`/routes/:id/${action}`, async (c) => {
+      const tenant = c.var.connectionId
       const id = idParam(c)
-      await setRouteEnabled(db, id, enabled)
+      await setRouteEnabled(db, tenant, id, enabled)
       mutated('route', action)
-      const [row] = await routesWithDestinations(eq(routes.id, id))
+      const [row] = await routesWithDestinations(tenant, eq(routes.id, id))
       return c.json(row)
     })
   }
@@ -455,17 +572,16 @@ export function consoleApi(deps: ConsoleApiDeps) {
     echo: sql`${settled} and ${events.routedAt} is not null and ${routedState} = 'echo'`,
     ok: sql`${settled} and ${routedState} = 'routed'`,
   }
-  const filterConds = (q: z.output<typeof facetsQuery>) => {
-    const conds: SQL[] = []
+  const filterConds = (tenant: string, q: z.output<typeof facetsQuery>) => {
+    const conds: SQL[] = [eq(events.connectionId, tenant)]
     if (q.provider) conds.push(eq(events.provider, q.provider))
-    if (q.connectionId) conds.push(eq(events.connectionId, q.connectionId))
     if (q.type) conds.push(sql`starts_with(${events.envelope}->>'type', ${q.type})`)
     if (q.since) conds.push(sql`${events.receivedAt} >= ${q.since}::timestamptz`)
     return conds
   }
 
-  api.get('/events/facets', validated('query', facetsQuery), async (c) => {
-    const conds = filterConds(c.req.valid('query') as z.output<typeof facetsQuery>)
+  t.get('/events/facets', validated('query', facetsQuery), async (c) => {
+    const conds = filterConds(c.var.connectionId, c.req.valid('query') as z.output<typeof facetsQuery>)
     const [row] = await db
       .select({
         all: sql<number>`count(*)::int`,
@@ -477,13 +593,13 @@ export function consoleApi(deps: ConsoleApiDeps) {
       })
       .from(events)
       .leftJoin(connections, eq(connections.id, events.connectionId))
-      .where(conds.length ? and(...conds) : undefined)
+      .where(and(...conds))
     return c.json(row)
   })
 
-  api.get('/events', validated('query', eventsQuery), async (c) => {
+  t.get('/events', validated('query', eventsQuery), async (c) => {
     const q = c.req.valid('query') as z.output<typeof eventsQuery>
-    const conds = filterConds(q)
+    const conds = filterConds(c.var.connectionId, q)
     if (q.cursor) {
       const cursor = decodeCursor(q.cursor)
       if (!cursor) return c.json({ error: 'validation', issues: [fail(['cursor'], 'invalid cursor')] }, 400)
@@ -529,7 +645,7 @@ export function consoleApi(deps: ConsoleApiDeps) {
       })
       .from(events)
       .leftJoin(connections, eq(connections.id, events.connectionId))
-      .where(conds.length ? and(...conds) : undefined)
+      .where(and(...conds))
       .orderBy(desc(events.receivedAt), desc(events.id))
       .limit(q.limit + 1)
     const page = rows.slice(0, q.limit)
@@ -540,9 +656,13 @@ export function consoleApi(deps: ConsoleApiDeps) {
     })
   })
 
-  api.get('/events/:id', async (c) => {
+  t.get('/events/:id', async (c) => {
     const id = idParam(c)
-    const [event] = await db.select().from(events).where(eq(events.id, id))
+    const tenant = c.var.connectionId
+    const [event] = await db
+      .select()
+      .from(events)
+      .where(and(eq(events.id, id), eq(events.connectionId, tenant)))
     if (!event) throw notFound('event not found')
     const [connection] = await db.select().from(connections).where(eq(connections.id, event.connectionId))
     const deliveryRows = await db
@@ -555,7 +675,7 @@ export function consoleApi(deps: ConsoleApiDeps) {
       .from(deliveries)
       .innerJoin(routes, eq(routes.id, deliveries.routeId))
       .innerJoin(destinations, eq(destinations.id, deliveries.destinationId))
-      .where(eq(deliveries.eventId, id))
+      .where(and(eq(deliveries.eventId, id), eq(routes.connectionId, tenant), eq(destinations.connectionId, tenant)))
       .orderBy(deliveries.createdAt)
     const ids = deliveryRows.map((r) => r.d.id)
     const [actionRows, runRows] = ids.length
@@ -610,15 +730,16 @@ export function consoleApi(deps: ConsoleApiDeps) {
     })
   })
 
-  api.post('/events/:id/replay', async (c) => {
-    await replayEvent(db, queue, idParam(c))
+  t.post('/events/:id/replay', async (c) => {
+    await replayEvent(db, queue, c.var.connectionId, idParam(c))
     mutated('event', 'replay')
     return c.json({ queued: true }, 202)
   })
 
-  api.get('/deliveries', validated('query', deliveriesQuery), async (c) => {
+  t.get('/deliveries', validated('query', deliveriesQuery), async (c) => {
     const q = c.req.valid('query') as z.output<typeof deliveriesQuery>
-    const conds: SQL[] = []
+    const tenant = c.var.connectionId
+    const conds: SQL[] = [eq(events.connectionId, tenant), eq(routes.connectionId, tenant), eq(destinations.connectionId, tenant)]
     if (q.status) conds.push(eq(deliveries.status, q.status))
     if (q.eventId) conds.push(eq(deliveries.eventId, q.eventId))
     const rows = await db
@@ -632,7 +753,7 @@ export function consoleApi(deps: ConsoleApiDeps) {
       .innerJoin(routes, eq(routes.id, deliveries.routeId))
       .innerJoin(destinations, eq(destinations.id, deliveries.destinationId))
       .innerJoin(events, eq(events.id, deliveries.eventId))
-      .where(conds.length ? and(...conds) : undefined)
+      .where(and(...conds))
       .orderBy(desc(deliveries.createdAt), desc(deliveries.id))
       .limit(q.limit)
     return c.json({
@@ -645,21 +766,20 @@ export function consoleApi(deps: ConsoleApiDeps) {
     })
   })
 
-  api.post('/deliveries/:id/replay', async (c) => {
+  t.post('/deliveries/:id/replay', async (c) => {
     const id = idParam(c)
-    const [row] = await db.select({ id: deliveries.id }).from(deliveries).where(eq(deliveries.id, id))
+    const [row] = await db
+      .select({ id: deliveries.id })
+      .from(deliveries)
+      .innerJoin(events, eq(events.id, deliveries.eventId))
+      .where(and(eq(deliveries.id, id), eq(events.connectionId, c.var.connectionId)))
     if (!row) throw notFound('delivery not found')
-    await replayDelivery(db, queue, id)
+    await replayDelivery(db, queue, c.var.connectionId, id)
     mutated('delivery', 'replay')
     return c.json({ queued: true }, 202)
   })
 
-  api.post('/tokens/revoke', validated('json', z.object({ jti: z.string().min(1).max(200) })), async (c) => {
-    await revokeReplyToken(db, (c.req.valid('json') as { jti: string }).jti)
-    mutated('token', 'revoke')
-    return c.body(null, 204)
-  })
-
+  api.route('/c/:connectionId', t)
   api.all('*', (c) => c.json({ error: 'not_found' }, 404))
 
   return api

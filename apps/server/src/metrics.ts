@@ -41,6 +41,15 @@ export function createServerMetrics(registry = new MetricsRegistry()) {
       'Console login attempts by outcome.',
       ['outcome'] as const,
     ),
+    consoleSignups: registry.counter(
+      'relay_console_signups_total',
+      'Console sign-up attempts by outcome.',
+      ['outcome'] as const,
+    ),
+    tenantDenied: registry.counter(
+      'relay_tenant_denied_total',
+      'Console API requests for a connection the user is not a member of. Answered 404.',
+    ),
     consoleMutations: registry.counter(
       'relay_console_mutations_total',
       'Successful console API changes by resource and action.',

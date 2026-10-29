@@ -5,8 +5,9 @@ import { createActionExecutor, deriveReplyTokenKey, PROMETHEUS_CONTENT_TYPE, typ
 import { createSlackAdapter, createSlackRuntime } from '@relay/provider-slack'
 import { createWebhookAdapter, createWebhookRuntime } from '@relay/provider-webhook'
 import { actionsRoutes } from './actions'
-import { consoleApi, sessionGuard } from './console/api'
-import { deriveSessionKey } from './console/session'
+import { scryptHasher, type PasswordHasher } from './accounts/password'
+import { consoleApi, sessionUser } from './console/api'
+import { createSessionStore } from './console/session'
 import { consoleHeaders, consoleStatic } from './console/static'
 import type { ServerConfig } from './config'
 import { ingressHandler } from './ingress'
@@ -15,7 +16,7 @@ import { slackOAuthRoutes } from './oauth'
 import { deriveStateKey } from './oauth-state'
 
 export interface AppDeps {
-  config: Pick<ServerConfig, 'PUBLIC_URL' | 'SLACK_SIGNING_SECRET' | 'SLACK_CLIENT_ID' | 'SLACK_CLIENT_SECRET' | 'SLACK_ALLOWED_USER_IDS' | 'RELAY_MASTER_KEY' | 'CONSOLE_PASSWORD'> & Partial<Pick<ServerConfig, 'SLACK_API_BASE_URL'>>
+  config: Pick<ServerConfig, 'PUBLIC_URL' | 'SLACK_SIGNING_SECRET' | 'SLACK_CLIENT_ID' | 'SLACK_CLIENT_SECRET' | 'SLACK_ALLOWED_USER_IDS' | 'RELAY_MASTER_KEY' | 'SIGNUP_MODE'> & Partial<Pick<ServerConfig, 'SLACK_API_BASE_URL'>>
   db: Db
   queue: Queue
   connections: ConnectionStore
@@ -24,6 +25,7 @@ export interface AppDeps {
   metrics: ServerMetrics
   fetch?: typeof fetch
   nowSeconds?: () => number
+  hasher?: PasswordHasher
 }
 
 export function createApp(deps: AppDeps) {
@@ -42,8 +44,8 @@ export function createApp(deps: AppDeps) {
   })
   const ingressDeps = { db: deps.db, queue: deps.queue, metrics: deps.metrics }
 
-  const sessionKey = deriveSessionKey(deps.config.RELAY_MASTER_KEY)
-  const hasSession = sessionGuard({ sessionKey, nowSeconds: deps.nowSeconds ?? (() => Math.floor(Date.now() / 1000)) })
+  const nowSeconds = deps.nowSeconds ?? (() => Math.floor(Date.now() / 1000))
+  const sessions = createSessionStore(deps.db, nowSeconds)
   const distDir = deps.consoleDistDir ?? fileURLToPath(new URL('../../console/dist', import.meta.url))
 
   return new Hono()
@@ -70,7 +72,6 @@ export function createApp(deps: AppDeps) {
         ...clock,
       }),
     )
-    .use('/oauth/slack/start', async (c, next) => (hasSession(c) ? next() : c.redirect('/#/login', 302)))
     .route(
       '/api',
       consoleApi({
@@ -80,10 +81,11 @@ export function createApp(deps: AppDeps) {
         connections: deps.connections,
         runtimes,
         metrics: deps.metrics,
-        password: deps.config.CONSOLE_PASSWORD,
-        sessionKey,
+        sessions,
+        hasher: deps.hasher ?? scryptHasher,
+        signupMode: deps.config.SIGNUP_MODE,
         publicUrl: deps.config.PUBLIC_URL,
-        nowSeconds: deps.nowSeconds ?? (() => Math.floor(Date.now() / 1000)),
+        nowSeconds,
       }),
     )
     .route(
@@ -96,6 +98,7 @@ export function createApp(deps: AppDeps) {
         stateKey: deriveStateKey(deps.config.RELAY_MASTER_KEY),
         connections: deps.connections,
         metrics: deps.metrics,
+        sessionUser: sessionUser(sessions),
         ...(deps.fetch ? { fetch: deps.fetch } : {}),
         ...clock,
       }),

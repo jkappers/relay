@@ -5,14 +5,14 @@ export const serverEnvSchema = coreEnvSchema.extend({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   PUBLIC_URL: z.url().transform((u) => u.replace(/\/+$/, '')),
   SLACK_API_BASE_URL: z.url().default('https://slack.com/api'),
-  CONSOLE_PASSWORD: z.string().min(16, 'must be at least 16 characters'),
+  SIGNUP_MODE: z.enum(['closed', 'open']).default('closed'),
   SLACK_SIGNING_SECRET: z.string().min(1),
   SLACK_CLIENT_ID: z.string().min(1),
   SLACK_CLIENT_SECRET: z.string().min(1),
   SLACK_ALLOWED_USER_IDS: z
     .string()
-    .transform((v) => v.split(',').map((id) => id.trim()).filter(Boolean))
-    .pipe(z.array(z.string()).min(1, 'must list at least one Slack user id')),
+    .default('')
+    .transform((v) => v.split(',').map((id) => id.trim()).filter(Boolean)),
 })
 
 export type ServerConfig = z.infer<typeof serverEnvSchema>

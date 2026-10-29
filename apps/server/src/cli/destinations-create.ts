@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs'
 import { createAgentDestination, createDestination } from '@relay/core'
-import { createCipher, intOpt, parseArgs, runCli } from './util'
+import { createCipher, intOpt, parseArgs, requireConnection, runCli } from './util'
 
 await runCli(async ({ db, config }) => {
   const { values } = parseArgs({
     options: {
+      connection: { type: 'string' },
       kind: { type: 'string' },
       name: { type: 'string' },
       url: { type: 'string' },
@@ -22,10 +23,11 @@ await runCli(async ({ db, config }) => {
     ? { allowedActions: values['allowed-actions'].split(',').map((a) => a.trim()).filter(Boolean) }
     : {}
   const kind = values.kind ?? 'http'
+  const connectionId = await requireConnection(db, values.connection)
 
   if (kind === 'agent') {
     if (!values['system-prompt-file']) throw new Error('--system-prompt-file is required for --kind agent')
-    const destination = await createAgentDestination(db, {
+    const destination = await createAgentDestination(db, connectionId, {
       name: values.name ?? '',
       config: {
         systemPrompt: readFileSync(values['system-prompt-file'], 'utf8').trim(),
@@ -43,7 +45,7 @@ await runCli(async ({ db, config }) => {
   if (kind !== 'http') throw new Error('--kind must be http or agent')
 
   const cipher = await createCipher(config.RELAY_MASTER_KEY)
-  const { destination, secret } = await createDestination(db, cipher, {
+  const { destination, secret } = await createDestination(db, cipher, connectionId, {
     name: values.name ?? '',
     url: values.url ?? '',
     ...(values['max-attempts'] ? { maxAttempts: intOpt(values['max-attempts'])! } : {}),

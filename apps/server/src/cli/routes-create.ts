@@ -1,5 +1,5 @@
 import { createRoute } from '@relay/core'
-import { parseArgs, runCli } from './util'
+import { parseArgs, requireConnection, runCli } from './util'
 
 await runCli(async ({ db }) => {
   const { values } = parseArgs({
@@ -13,11 +13,10 @@ await runCli(async ({ db }) => {
       'include-subtypes': { type: 'boolean', default: false },
     },
   })
-  const route = await createRoute(db, {
+  const route = await createRoute(db, await requireConnection(db, values.connection), {
     name: values.name ?? '',
     eventType: values['event-type'] ?? '',
     destinationIds: values.destination ?? [],
-    connectionId: values.connection ?? null,
     textContains: values.contains ?? null,
     textRegex: values.regex ?? null,
     includeSubtypes: values['include-subtypes'] ?? false,
