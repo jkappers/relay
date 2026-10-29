@@ -129,7 +129,7 @@ export function Overview({ open }: { open: string | null }) {
                   </a>
                 }
               >
-                Events show up here as soon as a connection receives one. Connect Slack or create a signed webhook to start.
+                Events show up here as soon as a connection receives one. Connect Slack or Discord, or create a signed webhook, to start.
               </Empty>
             ),
           }}

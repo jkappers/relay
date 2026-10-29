@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import type { WebhookCreated } from '../api'
 import { Icon, RelayMark } from '../icons'
-import { connectionsChanged, NewWebhook, WebhookSecret } from './Connections'
+import { connectionsChanged, NewWebhook, useInstalls, WebhookSecret } from './Connections'
 
 export function Onboarding({ email, onSignOut }: { email: string; onSignOut: () => void }) {
   const [created, setCreated] = useState<WebhookCreated | null>(null)
+  const installs = useInstalls()
 
   return (
     <div className="grid min-h-dvh grid-rows-[auto_1fr] bg-ground">
@@ -32,18 +33,34 @@ export function Onboarding({ email, onSignOut }: { email: string; onSignOut: () 
           </div>
         ) : (
           <div className="mt-4 flex flex-col divide-y divide-rule border-y border-rule">
-            <section aria-labelledby="slack-title" className="flex flex-wrap items-center justify-between gap-3 py-4">
-              <div className="min-w-0">
-                <h2 id="slack-title" className="font-semibold">
-                  Slack
-                </h2>
-                <p className="text-ink-2">Sign in with Slack. Relay gets your messages and can reply as you.</p>
-              </div>
-              <a className="btn" href="/oauth/slack/start">
-                <Icon name="external" className="size-3.5" />
-                Connect Slack
-              </a>
-            </section>
+            {installs.slack ? (
+              <section aria-labelledby="slack-title" className="flex flex-wrap items-center justify-between gap-3 py-4">
+                <div className="min-w-0">
+                  <h2 id="slack-title" className="font-semibold">
+                    Slack
+                  </h2>
+                  <p className="text-ink-2">Sign in with Slack. Relay gets your messages and can reply as you.</p>
+                </div>
+                <a className="btn" href="/oauth/slack/start">
+                  <Icon name="external" className="size-3.5" />
+                  Connect Slack
+                </a>
+              </section>
+            ) : null}
+            {installs.discord ? (
+              <section aria-labelledby="discord-title" className="flex flex-wrap items-center justify-between gap-3 py-4">
+                <div className="min-w-0">
+                  <h2 id="discord-title" className="font-semibold">
+                    Discord
+                  </h2>
+                  <p className="text-ink-2">Add the Relay bot to a server. It gets DMs and messages that mention it, and replies as the bot.</p>
+                </div>
+                <a className="btn" href="/oauth/discord/start">
+                  <Icon name="external" className="size-3.5" />
+                  Add Discord server
+                </a>
+              </section>
+            ) : null}
             <section aria-labelledby="webhook-title" className="flex flex-col gap-2 py-4">
               <div>
                 <h2 id="webhook-title" className="font-semibold">

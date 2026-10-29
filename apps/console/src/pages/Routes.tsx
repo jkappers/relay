@@ -16,6 +16,14 @@ interface RouteForm {
   destinationIds: string[]
 }
 
+const DEFAULT_EVENT_TYPES: Record<string, string> = { slack: 'slack.message.*', discord: 'discord.message.*', webhook: 'webhook.*' }
+const defaultEventType = (provider: string | undefined) => DEFAULT_EVENT_TYPES[provider ?? ''] ?? 'slack.message.*'
+const EVENT_HINTS: Record<string, string> = {
+  slack: 'slack.message.*',
+  discord: 'discord.message.* or discord.message.dm',
+  webhook: 'webhook.*',
+}
+
 const blank: RouteForm = {
   name: '',
   eventType: 'slack.message.*',
@@ -143,7 +151,7 @@ function RouteEditor({
   onDone: () => void
 }) {
   const provider = connections.find((c) => c.id === currentTenant())?.provider
-  const [f, setF] = useState<RouteForm>(editing ? toForm(editing) : { ...blank, eventType: provider === 'webhook' ? 'webhook.*' : blank.eventType })
+  const [f, setF] = useState<RouteForm>(editing ? toForm(editing) : { ...blank, eventType: defaultEventType(provider) })
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const set = <K extends keyof RouteForm>(k: K, v: RouteForm[K]) => setF((p) => ({ ...p, [k]: v }))
@@ -172,7 +180,7 @@ function RouteEditor({
         </h2>
         <Field label="Name">{(p) => <input {...p} className="input" required value={f.name} onChange={(e) => set('name', e.target.value)} />}</Field>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Event type" hint="Exact, or a prefix ending in *, such as slack.message.*">
+          <Field label="Event type" hint={`Exact, or a prefix ending in *, such as ${EVENT_HINTS[provider ?? ''] ?? EVENT_HINTS.slack}`}>
             {(p) => <input {...p} className="input font-mono" required value={f.eventType} onChange={(e) => set('eventType', e.target.value)} />}
           </Field>
           <Field label="Text contains" hint="Case-insensitive. Leave empty for any text.">

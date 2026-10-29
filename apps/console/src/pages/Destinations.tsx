@@ -156,7 +156,7 @@ function DestinationForm({
             <Field label="Timeout (s)">
               {(p) => <input {...p} className="input" type="number" min={5} max={3600} value={f.timeoutSeconds} onChange={(e) => set('timeoutSeconds', e.target.value)} />}
             </Field>
-            <Field label="Max Slack changes per run" hint="Replies, posts, reactions, updates.">
+            <Field label="Max changes per run" hint="Replies, posts, reactions, updates in Slack or Discord.">
               {(p) => <input {...p} className="input" type="number" min={0} max={50} value={f.maxMutatingActions} onChange={(e) => set('maxMutatingActions', e.target.value)} />}
             </Field>
           </div>
@@ -221,7 +221,7 @@ export function Destinations() {
           when: (d) => d.items.length === 0,
           render: () => (
             <Empty title="No destinations yet" action={mode ? null : newButton}>
-              A destination receives events from routes. Add a signed HTTP endpoint, or an agent that can reply in Slack.
+              A destination receives events from routes. Add a signed HTTP endpoint, or an agent that can reply in Slack or Discord.
             </Empty>
           ),
         }}

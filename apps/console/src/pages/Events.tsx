@@ -157,7 +157,7 @@ export function Events({ open }: { open: string | null }) {
                     </a>
                   }
                 >
-                  Relay stores every verified call it receives. Connect Slack or create a signed webhook, then send a test event.
+                  Relay stores every verified event it receives. Connect Slack or Discord, or create a signed webhook, then send a test event.
                 </Empty>
               ),
           }}
@@ -228,7 +228,7 @@ function EventBody({ e, connections, onChange }: { e: EventDetail; connections: 
           </Fact>
           <Fact term="Line">
             <span className="flex min-w-0 flex-wrap items-center gap-x-2">
-              <span>{connection?.provider === 'slack' ? lineLabel(connection) : e.provider}</span>
+              <span>{connection?.provider === 'slack' || connection?.provider === 'discord' ? lineLabel(connection) : e.provider}</span>
               <CopyId value={e.connectionId} label="connection ID" short />
             </span>
           </Fact>

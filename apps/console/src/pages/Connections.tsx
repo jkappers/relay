@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { CONNECTIONS_CHANGED_EVENT, get, post, type Connection, type SmsCreated, type WebhookCreated } from '../api'
+import { CONNECTIONS_CHANGED_EVENT, get, post, type Connection, type InstallUrls, type SmsCreated, type WebhookCreated } from '../api'
 import { Async, ConfirmButton, CopyId, cx, Empty, Field, FormError, Page, SecretBox, SkeletonRows, Time } from '../components'
 import { errorText, useLoad } from '../hooks'
 import { Icon } from '../icons'
@@ -7,6 +7,32 @@ import { jackCode, lineLabel } from '../patch'
 import { StatusMark } from '../trace'
 
 export const connectionsChanged = () => window.dispatchEvent(new Event(CONNECTIONS_CHANGED_EVENT))
+
+export const INSTALLS = [
+  { id: 'slack', label: 'Connect Slack' },
+  { id: 'discord', label: 'Add Discord server' },
+] as const
+
+/** OAuth installs the server has app settings for. Empty until loaded or if the call fails. */
+export function useInstalls(): InstallUrls {
+  const state = useLoad(() => get<InstallUrls>('/api/connections/providers'), [])
+  return state.data ?? { slack: null, discord: null }
+}
+
+export function InstallLinks({ installs, small }: { installs: InstallUrls; small?: boolean }) {
+  return (
+    <>
+      {INSTALLS.map((i) =>
+        installs[i.id] ? (
+          <a key={i.id} className={cx('btn', small && 'btn-sm')} href={`/oauth/${i.id}/start`}>
+            <Icon name="external" className="size-3.5" />
+            {i.label}
+          </a>
+        ) : null,
+      )}
+    </>
+  )
+}
 
 export function NewWebhook({ onCreated, onCancel }: { onCreated: (c: WebhookCreated) => void; onCancel?: () => void }) {
   const [name, setName] = useState('')
@@ -150,6 +176,7 @@ export function Connections() {
   const [created, setCreated] = useState<WebhookCreated | null>(null)
   const [createdSms, setCreatedSms] = useState<SmsCreated | null>(null)
   const [adding, setAdding] = useState(false)
+  const installs = useInstalls()
   const [addingSms, setAddingSms] = useState(false)
 
   const actions = (
@@ -158,10 +185,7 @@ export function Connections() {
         <Icon name="plus" className="size-3.5" />
         New SMS
       </button>
-      <a className="btn btn-sm" href="/oauth/slack/start">
-        <Icon name="external" className="size-3.5" />
-        Connect Slack
-      </a>
+      <InstallLinks installs={installs} small />
       <button type="button" className="btn btn-primary btn-sm" disabled={adding} onClick={() => setAdding(true)}>
         <Icon name="plus" className="size-3.5" />
         New webhook
@@ -206,7 +230,7 @@ export function Connections() {
           when: (d) => d.items.length === 0,
           render: () => (
             <Empty title="No connections yet" action={actions}>
-              Connect a Slack account with OAuth, or create a signed webhook for any service that can send HTTP POSTs.
+              Connect a Slack account, add the Relay bot to a Discord server, add an SMS number, or create a signed webhook for any service that can send HTTP POSTs.
             </Empty>
           ),
         }}

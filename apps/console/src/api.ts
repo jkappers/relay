@@ -83,6 +83,12 @@ export interface Session {
   signup: SignupMode
 }
 
+/** OAuth start URLs for the installs the server is set up for. Null when the app settings are missing. */
+export interface InstallUrls {
+  slack: string | null
+  discord: string | null
+}
+
 export interface WebhookCreated extends Omit<Connection, 'role' | 'teamId' | 'userId'> {
   url: string
   secret: string
