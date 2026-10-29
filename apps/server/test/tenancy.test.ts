@@ -21,6 +21,8 @@ const TABLES = [
   'agent_runs',
   'revoked_tokens',
   'route_decisions',
+  'provider_apps',
+  'provider_app_status',
 ] as const
 
 async function snapshot(): Promise<string> {
@@ -215,6 +217,21 @@ describe('tenant isolation', () => {
     expect(mine.items.map((c: { id: string }) => c.id)).toEqual([a.connectionId])
     const session = (await (await a.account.api('GET', '/api/session')).json()) as { connections: { id: string }[] }
     expect(session.connections.map((c: { id: string }) => c.id)).toEqual([a.connectionId])
+  })
+
+  it('404s every admin endpoint for a member who is not an instance admin, and changes nothing', async () => {
+    const routes = h.app.routes.filter((r) => r.path.startsWith('/api/admin/') && r.method !== 'ALL')
+    expect(routes.length).toBeGreaterThanOrEqual(4)
+    const before = await snapshot()
+    for (const r of routes) {
+      const body = r.method === 'PUT' ? { clientId: '1111111111.2222222222', clientSecret: 'x'.repeat(32), signingSecret: 'y'.repeat(32), confirmClientIdChange: true } : undefined
+      const res = await a.account.api(r.method, r.path.replace(':provider', 'slack'), body)
+      expect(res.status, `${r.method} ${r.path}`).toBe(404)
+      expect(await res.json()).toEqual({ error: 'not_found' })
+    }
+    expect(await snapshot()).toBe(before)
+    expect(h.metrics.adminDenied.get({})).toBe(routes.length)
+    expect(h.fetch).not.toHaveBeenCalled()
   })
 
   it('keeps token revoke account-level: any signed-in user can revoke any jti, and it only adds a revocation', async () => {
