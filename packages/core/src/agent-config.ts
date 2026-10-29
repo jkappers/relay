@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MAX_AGENT_TOOL_DESTINATIONS } from './tool-config'
 
 export const DEFAULT_AGENT_MODEL = 'claude-sonnet-5-5'
 export const DEFAULT_AGENT_MAX_TURNS = 8
@@ -13,6 +14,11 @@ export const agentConfigSchema = z.object({
   maxTurns: z.number().int().min(1).max(50).default(DEFAULT_AGENT_MAX_TURNS),
   timeoutSeconds: z.number().int().min(5).max(3600).default(DEFAULT_AGENT_TIMEOUT_SECONDS),
   maxMutatingActions: z.number().int().min(0).max(50).default(DEFAULT_AGENT_MAX_MUTATING_ACTIONS),
+  toolDestinationIds: z
+    .array(z.uuid())
+    .max(MAX_AGENT_TOOL_DESTINATIONS)
+    .default([])
+    .transform((ids) => [...new Set(ids)]),
 })
 export type AgentConfig = z.output<typeof agentConfigSchema>
 export type AgentConfigInput = z.input<typeof agentConfigSchema>

@@ -118,7 +118,7 @@ export const events = pgTable(
   ],
 )
 
-export const destinationKind = pgEnum('destination_kind', ['http', 'agent'])
+export const destinationKind = pgEnum('destination_kind', ['http', 'agent', 'tool'])
 
 export const destinations = pgTable(
   'destinations',
@@ -142,6 +142,11 @@ export const destinations = pgTable(
   (t) => [
     index('destinations_connection_idx').on(t.connectionId),
     check('destinations_http_needs_url_and_secret', sql`${t.kind} <> 'http' or (${t.url} is not null and ${t.secretCiphertext} is not null)`),
+    check(
+      'destinations_tool_needs_url_and_secret',
+      sql`${t.kind}::text <> 'tool' or (${t.url} is not null and ${t.secretCiphertext} is not null and ${t.config} is not null)`,
+    ),
+    uniqueIndex('destinations_tool_name_uq').on(t.connectionId, sql`(${t.config}->>'toolName')`),
   ],
 )
 

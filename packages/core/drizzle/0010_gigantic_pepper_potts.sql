@@ -1,0 +1,3 @@
+ALTER TYPE "public"."destination_kind" ADD VALUE 'tool';--> statement-breakpoint
+CREATE UNIQUE INDEX "destinations_tool_name_uq" ON "destinations" USING btree ("connection_id",("config"->>'toolName'));--> statement-breakpoint
+ALTER TABLE "destinations" ADD CONSTRAINT "destinations_tool_needs_url_and_secret" CHECK ("destinations"."kind"::text <> 'tool' or ("destinations"."url" is not null and "destinations"."secret_ciphertext" is not null and "destinations"."config" is not null));

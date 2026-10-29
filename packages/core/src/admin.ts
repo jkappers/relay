@@ -2,6 +2,13 @@ import { randomBytes } from 'node:crypto'
 import { and, count, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { agentConfigSchema, type AgentConfig } from './agent-config'
+import {
+  DEFAULT_TOOL_TIMEOUT_MS,
+  MAX_AGENT_TOOL_DESTINATIONS,
+  MAX_TOOL_TIMEOUT_MS,
+  toolConfigSchema,
+  type ToolConfig,
+} from './tool-config'
 import type { Cipher } from './crypto'
 import type { Db } from './db/client'
 import {
@@ -17,11 +24,11 @@ import {
 import { QUEUES, type DispatchJob, type Queue, type RouteJob } from './queue'
 import { MAX_REGEX_LENGTH, validateRegex } from './routing'
 
+export const destinationUrl = z.url().refine((u) => /^https?:\/\//.test(u), 'must be http or https')
+
 export const createDestinationInput = z.object({
   name: z.string().min(1),
-  url: z
-    .url()
-    .refine((u) => /^https?:\/\//.test(u), 'must be http or https'),
+  url: destinationUrl,
   maxAttempts: z.number().int().min(1).max(50).default(8),
   timeoutMs: z.number().int().min(100).max(120_000).default(10_000),
   allowedActions: z.array(z.string().min(1)).nullable().default(null),
@@ -35,8 +42,19 @@ export const createAgentDestinationInput = z.object({
 })
 export type CreateAgentDestinationInput = z.input<typeof createAgentDestinationInput>
 
+async function assertToolRefs(db: Pick<Db, 'select'>, connectionId: string, ids: readonly string[]) {
+  if (ids.length === 0) return
+  const unique = [...new Set(ids)]
+  const found = await db
+    .select({ id: destinations.id })
+    .from(destinations)
+    .where(and(inArray(destinations.id, unique), eq(destinations.connectionId, connectionId), eq(destinations.kind, 'tool')))
+  if (found.length !== unique.length) throw new AdminError('unknown tool destination id', 'invalid')
+}
+
 export async function createAgentDestination(db: Db, connectionId: string, input: CreateAgentDestinationInput): Promise<DestinationRow> {
   const parsed = createAgentDestinationInput.parse(input)
+  await assertToolRefs(db, connectionId, parsed.config.toolDestinationIds)
   const [destination] = await db
     .insert(destinations)
     .values({ connectionId, name: parsed.name, kind: 'agent', config: parsed.config, allowedActions: parsed.allowedActions })
@@ -65,6 +83,53 @@ export async function createDestination(
     })
     .returning()
   return { destination: destination!, secret }
+}
+
+export const createToolDestinationInput = toolConfigSchema.extend({
+  name: z.string().min(1),
+  url: destinationUrl,
+  timeoutMs: z.number().int().min(100).max(MAX_TOOL_TIMEOUT_MS).default(DEFAULT_TOOL_TIMEOUT_MS),
+})
+export type CreateToolDestinationInput = z.input<typeof createToolDestinationInput>
+
+async function assertToolNameFree(db: Pick<Db, 'select'>, connectionId: string, toolName: string, exceptId?: string) {
+  const [row] = await db
+    .select({ id: destinations.id })
+    .from(destinations)
+    .where(
+      and(
+        eq(destinations.connectionId, connectionId),
+        eq(destinations.kind, 'tool'),
+        sql`${destinations.config}->>'toolName' = ${toolName}`,
+        ...(exceptId ? [sql`${destinations.id} <> ${exceptId}`] : []),
+      ),
+    )
+  if (row) throw new AdminError(`tool name ${toolName} is already used in this connection`, 'conflict')
+}
+
+const isUniqueViolation = (err: unknown) =>
+  typeof err === 'object' && err !== null && ((err as { code?: string }).code === '23505' || (err as { cause?: { code?: string } }).cause?.code === '23505')
+
+export async function createToolDestination(
+  db: Db,
+  cipher: Cipher,
+  connectionId: string,
+  input: CreateToolDestinationInput,
+): Promise<{ destination: DestinationRow; secret: string }> {
+  const { name, url, timeoutMs, ...rest } = createToolDestinationInput.parse(input)
+  const config: ToolConfig = toolConfigSchema.parse(rest)
+  await assertToolNameFree(db, connectionId, config.toolName)
+  const secret = randomBytes(32).toString('hex')
+  try {
+    const [destination] = await db
+      .insert(destinations)
+      .values({ connectionId, name, kind: 'tool', url, timeoutMs, maxAttempts: 1, config, secretCiphertext: cipher.encrypt(secret) })
+      .returning()
+    return { destination: destination!, secret }
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new AdminError(`tool name ${config.toolName} is already used in this connection`, 'conflict')
+    throw err
+  }
 }
 
 export const MAX_INTENT_LENGTH = 500
@@ -132,10 +197,11 @@ export async function setClassifierSettings(db: Db, connectionId: string, input:
 async function assertRouteRefs(db: Pick<Db, 'select'>, connectionId: string, destinationIds: string[]) {
   const unique = [...new Set(destinationIds)]
   const found = await db
-    .select({ id: destinations.id })
+    .select({ id: destinations.id, kind: destinations.kind })
     .from(destinations)
     .where(and(inArray(destinations.id, unique), eq(destinations.connectionId, connectionId)))
   if (found.length !== unique.length) throw new AdminError('unknown destination id', 'invalid')
+  if (found.some((d) => d.kind === 'tool')) throw new AdminError('a tool destination is called by agents and cannot be linked to a route', 'invalid')
 }
 
 export async function createRoute(db: Db, connectionId: string, input: CreateRouteInput): Promise<RouteRow> {
@@ -227,7 +293,7 @@ export async function deleteRoute(db: Db, connectionId: string, id: string): Pro
 export const updateHttpDestinationInput = z
   .object({
     name: z.string().min(1).optional(),
-    url: z.url().refine((u) => /^https?:\/\//.test(u), 'must be http or https').optional(),
+    url: destinationUrl.optional(),
     enabled: z.boolean().optional(),
     maxAttempts: z.number().int().min(1).max(50).optional(),
     timeoutMs: z.number().int().min(100).max(120_000).optional(),
@@ -242,6 +308,22 @@ const agentConfigPatch = z
     maxTurns: agentConfigSchema.shape.maxTurns.removeDefault().optional(),
     timeoutSeconds: agentConfigSchema.shape.timeoutSeconds.removeDefault().optional(),
     maxMutatingActions: agentConfigSchema.shape.maxMutatingActions.removeDefault().optional(),
+    toolDestinationIds: z.array(z.uuid()).max(MAX_AGENT_TOOL_DESTINATIONS).optional(),
+  })
+  .strict()
+
+export const updateToolDestinationInput = z
+  .object({
+    name: z.string().min(1).optional(),
+    url: destinationUrl.optional(),
+    enabled: z.boolean().optional(),
+    timeoutMs: z.number().int().min(100).max(MAX_TOOL_TIMEOUT_MS).optional(),
+    toolName: toolConfigSchema.shape.toolName.optional(),
+    description: toolConfigSchema.shape.description.optional(),
+    params: toolConfigSchema.shape.params.optional(),
+    mutating: z.boolean().optional(),
+    sensitive: z.boolean().optional(),
+    maxResponseBytes: toolConfigSchema.shape.maxResponseBytes.removeDefault().optional(),
   })
   .strict()
 
@@ -269,6 +351,20 @@ export async function updateDestination(db: Db, connectionId: string, id: string
       ...(p.timeoutMs !== undefined && { timeoutMs: p.timeoutMs }),
       ...(p.allowedActions !== undefined && { allowedActions: p.allowedActions }),
     })
+  } else if (existing.kind === 'tool') {
+    const { name, url, enabled, timeoutMs, ...cfg } = updateToolDestinationInput.parse(input)
+    Object.assign(set, {
+      ...(name !== undefined && { name }),
+      ...(url !== undefined && { url }),
+      ...(enabled !== undefined && { enabled }),
+      ...(timeoutMs !== undefined && { timeoutMs }),
+    })
+    const defined = Object.fromEntries(Object.entries(cfg).filter(([, v]) => v !== undefined))
+    if (Object.keys(defined).length > 0) {
+      const merged: ToolConfig = toolConfigSchema.parse({ ...(existing.config as object), ...defined })
+      if (merged.toolName !== (existing.config as { toolName?: string } | null)?.toolName) await assertToolNameFree(db, connectionId, merged.toolName, id)
+      set.config = merged
+    }
   } else {
     const p = updateAgentDestinationInput.parse(input)
     Object.assign(set, {
@@ -278,10 +374,17 @@ export async function updateDestination(db: Db, connectionId: string, id: string
     })
     if (p.config !== undefined) {
       const merged: AgentConfig = agentConfigSchema.parse({ ...(existing.config as object), ...p.config })
+      await assertToolRefs(db, connectionId, merged.toolDestinationIds)
       set.config = merged
     }
   }
-  const [row] = await db.update(destinations).set(set).where(inTenant).returning()
+  let row: DestinationRow | undefined
+  try {
+    ;[row] = await db.update(destinations).set(set).where(inTenant).returning()
+  } catch (err) {
+    if (isUniqueViolation(err)) throw new AdminError('tool name is already used in this connection', 'conflict')
+    throw err
+  }
   if (!row) throw new AdminError('destination not found', 'not_found')
   return row
 }
@@ -300,6 +403,11 @@ export async function deleteDestination(db: Db, connectionId: string, id: string
     if (linked > 0) throw new AdminError(`destination is used by ${linked} route(s); unlink it first`, 'conflict')
     const [{ n: delivered } = { n: 0 }] = await tx.select({ n: count() }).from(deliveries).where(eq(deliveries.destinationId, id))
     if (delivered > 0) throw new AdminError('destination has deliveries; disable it instead', 'conflict')
+    const [{ n: agents } = { n: 0 }] = await tx
+      .select({ n: count() })
+      .from(destinations)
+      .where(and(eq(destinations.kind, 'agent'), sql`coalesce(${destinations.config}->'toolDestinationIds', '[]'::jsonb) ? ${id}`))
+    if (agents > 0) throw new AdminError(`destination is a tool of ${agents} agent(s); remove it there first`, 'conflict')
     await tx.delete(destinations).where(eq(destinations.id, id))
   })
 }
@@ -308,7 +416,7 @@ export async function rotateDestinationSecret(db: Db, cipher: Cipher, connection
   const inTenant = and(eq(destinations.id, id), eq(destinations.connectionId, connectionId))
   const [existing] = await db.select({ kind: destinations.kind }).from(destinations).where(inTenant)
   if (!existing) throw new AdminError('destination not found', 'not_found')
-  if (existing.kind !== 'http') throw new AdminError('only http destinations have a signing secret', 'invalid')
+  if (existing.kind === 'agent') throw new AdminError('only http and tool destinations have a signing secret', 'invalid')
   const secret = randomBytes(32).toString('hex')
   await db
     .update(destinations)
