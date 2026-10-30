@@ -1,5 +1,9 @@
 # Relay
 
+![Relay poster](https://pub-f71a4c44685d4f3ebbec9d2d4d5368e9.r2.dev/poster.png)
+
+[Watch the product video](https://pub-f71a4c44685d4f3ebbec9d2d4d5368e9.r2.dev/relay-product-video.mp4)
+
 Relay is one place for events to come in and actions to go back out. Slack messages, Discord mentions, and signed webhooks arrive, get stored, and route to destinations — a signed HTTP endpoint, or a Claude agent running inside Relay — that can reply, react, or read the thread on the sender's behalf. The owner runs their own instance for their own traffic; other users sign in, connect their own Slack and Discord accounts, and see only their own connection.
 
 Acting on someone's behalf is safe by construction:
