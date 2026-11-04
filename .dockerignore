@@ -1,0 +1,15 @@
+.git
+.github
+.claude
+.impeccable
+.env
+.env.*
+**/node_modules
+**/dist
+coverage
+docs
+*.log
+.DS_Store
+.drift-check
+Dockerfile
+.dockerignore

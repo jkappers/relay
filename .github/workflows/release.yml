@@ -1,0 +1,68 @@
+name: release
+
+# Push a tag vX.Y.Z or vX.Y.Z-rc.N on a commit that is on main and passed `build`.
+# This never rebuilds: it adds version tags to the already-tested image.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/jkappers/relay
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Validate tag and commit
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || { echo "bad tag: $TAG"; exit 1; }
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "tag is not on main"; exit 1; }
+      - name: Add version tags to the tested image
+        id: tag
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          short="${GITHUB_SHA::12}"
+          docker buildx imagetools inspect "$IMAGE:sha-$short" >/dev/null 2>&1 \
+            || { echo "no tested image $IMAGE:sha-$short. Did build pass on this commit?"; exit 1; }
+          digest=$(docker buildx imagetools inspect "$IMAGE:sha-$short" --format '{{json .Manifest}}' | jq -r .digest)
+          gh attestation verify "oci://$IMAGE@$digest" --repo "$GITHUB_REPOSITORY"
+          version="${TAG#v}"
+          tags=(-t "$IMAGE:$version")
+          prerelease=true
+          if [[ "$version" =~ ^([0-9]+)\.([0-9]+)\.[0-9]+$ ]]; then
+            prerelease=false
+            tags+=(-t "$IMAGE:${BASH_REMATCH[1]}.${BASH_REMATCH[2]}" -t "$IMAGE:${BASH_REMATCH[1]}")
+          fi
+          docker buildx imagetools create "${tags[@]}" "$IMAGE@$digest"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: GitHub release
+        env:
+          TAG: ${{ github.ref_name }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flag=(); [ "$PRERELEASE" = true ] && flag=(--prerelease)
+          gh release create "$TAG" --generate-notes --verify-tag "${flag[@]}"

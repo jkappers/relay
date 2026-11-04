@@ -1,0 +1,229 @@
+name: build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/jkappers/relay
+  TRIVY: ghcr.io/aquasecurity/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+  GITLEAKS: ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+
+jobs:
+  scan-source:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: gitleaks (full history)
+        run: docker run --rm -v "$PWD":/repo -w /repo "$GITLEAKS" git --no-banner --redact -c .gitleaks.toml .
+      - name: trivy fs (dependencies, secrets, misconfig)
+        run: >
+          docker run --rm -v "$PWD":/src:ro -w /src "$TRIVY" fs
+          --scanners vuln,secret,misconfig --severity HIGH,CRITICAL
+          --ignore-unfixed --skip-dirs node_modules --exit-code 1 .
+
+  build:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { arch: amd64, platform: linux/amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, platform: linux/arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          sbom: false
+          outputs: ${{ github.event_name == 'push' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.IMAGE) || '' }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+      - name: Export digest
+        if: github.event_name == 'push'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - name: Upload digest
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digests-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Join the per-arch images into one index tagged cand-<sha>. Untested.
+  merge:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.index.outputs.digest }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: index
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          short="${GITHUB_SHA::12}"
+          # shellcheck disable=SC2046
+          docker buildx imagetools create -t "$IMAGE:cand-$short" $(printf "$IMAGE@sha256:%s " *)
+          digest=$(docker buildx imagetools inspect "$IMAGE:cand-$short" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          docker buildx imagetools inspect "$IMAGE@$digest"
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.index.outputs.digest }}
+          push-to-registry: true
+
+  scan-image:
+    needs: merge
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    steps:
+      - name: Scan both architectures
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          DIGEST: ${{ needs.merge.outputs.digest }}
+        run: |
+          set +e
+          status=0
+          for platform in linux/amd64 linux/arm64; do
+            docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD -v "$PWD":/out "$TRIVY" image \
+              --platform "$platform" --scanners vuln,secret --severity HIGH,CRITICAL \
+              --ignore-unfixed --exit-code 1 --format sarif \
+              --output "/out/trivy-${platform#linux/}.sarif" "$IMAGE@$DIGEST" || status=1
+          done
+          exit $status
+      - name: Upload SARIF
+        if: always() && hashFiles('trivy-amd64.sarif') != ''
+        uses: github/codeql-action/upload-sarif@1fc58d04a4d4374f921bdac573c3811c240f9c26 # v4.39.2
+        with:
+          sarif_file: trivy-amd64.sarif
+          category: trivy-image
+
+  smoke:
+    needs: merge
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: read
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: relay
+          POSTGRES_PASSWORD: relay
+          POSTGRES_DB: relay
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U relay -d relay"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    steps:
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run the candidate
+        env:
+          REF: ${{ env.IMAGE }}@${{ needs.merge.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker pull "$REF"
+          key=$(openssl rand -base64 32)
+          common=(--network host
+            -e DATABASE_URL=postgres://relay:relay@localhost:5432/relay
+            -e RELAY_MASTER_KEY="$key" -e PUBLIC_URL=https://relay.example.com)
+          docker run --rm "${common[@]}" "$REF" node --import tsx packages/core/src/db/migrate-cli.ts
+          docker run -d --name server "${common[@]}" "$REF"
+          docker run -d --name worker "${common[@]}" "$REF" node --import tsx apps/worker/src/main.ts
+          wait_for() {
+            for _ in $(seq 1 30); do
+              [ "$(curl -s -o /dev/null -w '%{http_code}' "$1")" = 200 ] && return 0
+              sleep 1
+            done
+            echo "timeout waiting for $1"; docker logs server; docker logs worker; return 1
+          }
+          wait_for http://localhost:3000/healthz
+          wait_for http://localhost:3000/
+          wait_for http://localhost:9465/healthz
+          [ "$(docker exec server id -un)" = node ]
+          [ "$(docker exec server sh -c 'ls -A /app | grep -c "^\.env"' || true)" = 0 ]
+
+  # Everything passed: the candidate becomes sha-<sha> (releasable) and edge.
+  tested:
+    needs: [scan-source, scan-image, smoke, merge]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - env:
+          DIGEST: ${{ needs.merge.outputs.digest }}
+        run: |
+          short="${GITHUB_SHA::12}"
+          docker buildx imagetools create -t "$IMAGE:sha-$short" -t "$IMAGE:edge" "$IMAGE@$DIGEST"

@@ -1,0 +1,63 @@
+name: promote
+
+# Move `latest` to an already-released stable version. Needs approval from the
+# `production` environment. Run again with an older version to roll back.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable version to promote, like 1.2.3 (no v, no -rc)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/jkappers/relay
+  TRIVY: ghcr.io/aquasecurity/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    environment: production
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Resolve and verify
+        id: src
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a stable version: $VERSION"; exit 1; }
+          digest=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)
+          gh attestation verify "oci://$IMAGE@$digest" --repo "$GITHUB_REPOSITORY"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Rescan this digest (new CVEs since the build)
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          DIGEST: ${{ steps.src.outputs.digest }}
+        run: |
+          for platform in linux/amd64 linux/arm64; do
+            docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD "$TRIVY" image \
+              --platform "$platform" --scanners vuln,secret --severity HIGH,CRITICAL \
+              --ignore-unfixed --exit-code 1 "$IMAGE@$DIGEST"
+          done
+      - name: Point latest at it
+        env:
+          DIGEST: ${{ steps.src.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE@$DIGEST"
+          now=$(docker buildx imagetools inspect "$IMAGE:latest" --format '{{json .Manifest}}' | jq -r .digest)
+          [ "$now" = "$DIGEST" ] || { echo "latest is $now, expected $DIGEST"; exit 1; }

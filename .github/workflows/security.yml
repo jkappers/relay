@@ -1,0 +1,48 @@
+name: security
+
+# New CVEs land after an image ships. Rescan what people actually pull.
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/jkappers/relay
+  TRIVY: ghcr.io/aquasecurity/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+
+jobs:
+  rescan:
+    strategy:
+      fail-fast: false
+      matrix:
+        tag: [latest, edge]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Scan
+        env:
+          TAG: ${{ matrix.tag }}
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! docker buildx imagetools inspect "$IMAGE:$TAG" >/dev/null 2>&1; then
+            echo "$IMAGE:$TAG does not exist yet, skipping"; exit 0
+          fi
+          status=0
+          for platform in linux/amd64 linux/arm64; do
+            docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD "$TRIVY" image \
+              --platform "$platform" --scanners vuln,secret --severity HIGH,CRITICAL \
+              --ignore-unfixed --exit-code 1 "$IMAGE:$TAG" || status=1
+          done
+          exit $status

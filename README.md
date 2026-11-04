@@ -110,6 +110,34 @@ scripts/check.sh
 
 Tests use the `relay_test` database. Compose creates it on first start, so tests never touch dev data. Set `TEST_DATABASE_URL` to use another one (each run drops and re-creates its tables).
 
+## Container image
+
+Published to `ghcr.io/jkappers/relay` for amd64 and arm64. One image, several processes. Set the [environment](#environment) and pick the command:
+
+```sh
+docker run --rm --env-file .env ghcr.io/jkappers/relay:<version> node --import tsx packages/core/src/db/migrate-cli.ts
+docker run -d --env-file .env -p 3000:3000 ghcr.io/jkappers/relay:<version>                                       # server
+docker run -d --env-file .env ghcr.io/jkappers/relay:<version> node --import tsx apps/worker/src/main.ts          # worker
+docker run -d --env-file .env ghcr.io/jkappers/relay:<version> node --import tsx apps/gateway/src/main.ts         # gateway, Discord only
+```
+
+Pin a version (`1.2.3`) or a minor (`1.2`) in production. `latest` is the last version a maintainer promoted. `edge` is the newest tested `main`.
+
+Verify an image came from this repo's workflow:
+
+```sh
+gh attestation verify oci://ghcr.io/jkappers/relay:<version> --repo jkappers/relay
+```
+
+### Releasing
+
+1. Land the change on `main` and wait for `build` to go green. That tests the image and tags it `sha-<12 chars>`.
+2. Tag the commit: `git tag v1.2.3` (or `v1.2.3-rc.1` for a candidate) and push the tag. `release` adds the version tags and a GitHub release. It never rebuilds.
+3. Try the candidate: `docker pull ghcr.io/jkappers/relay:1.2.3`.
+4. Run the **promote** workflow with `1.2.3`. After approval it rescans the image and moves `latest`. To roll back, promote an older version.
+
+See [ADR 0013](docs/adr/0013-container-release-flow.md).
+
 ## Environment
 
 | Var | Used by | Notes |

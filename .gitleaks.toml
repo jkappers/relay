@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake credentials in tests and provider fixtures (Discord docs sample token, xoxp-test-token, PLANTED-*)"
+paths = [
+  '''(^|/)test/''',
+  '''\.test\.ts$''',
+]
