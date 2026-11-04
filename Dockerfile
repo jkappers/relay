@@ -1,4 +1,4 @@
-FROM node:24-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS base
+FROM node:26-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39 AS base
 ENV CI=true
 RUN corepack enable
 WORKDIR /app
@@ -14,7 +14,7 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 RUN pnpm build:console
 
-FROM node:24-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS runtime
+FROM node:26-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39 AS runtime
 LABEL org.opencontainers.image.source="https://github.com/jkappers/relay" \
       org.opencontainers.image.description="Relay: route chat events to tools and agents"
 # npm, npx and corepack are not used at runtime; dropping them removes their bundled CVEs.
